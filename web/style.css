@@ -85,3 +85,7 @@ h1, h2 { margin: 0; font-family: "New York", "Iowan Old Style", Georgia, serif; 
 @keyframes rot { to { transform: rotate(360deg) } }
 .ios-tip { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); background: var(--ink); color: var(--bg); padding: 12px 14px; border-radius: 14px; font-size: 14px; display: flex; gap: 10px; align-items: center; z-index: 20; }
 .ios-tip button { color: var(--bg); font-weight: 700; margin-left: auto; }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(96px + env(safe-area-inset-bottom)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 14px; font-weight: 600; z-index: 30; max-width: 90vw; text-align: center; animation: fade .15s; pointer-events: none; }
+.top .hintbtn { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.hintcell { fill: var(--ok) !important; }

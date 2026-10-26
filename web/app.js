@@ -1,5 +1,5 @@
 import { GAMES, GAME_KEYS, DIFF_TITLE, dailySeed, dailyDiff, dayKey, randomSeed } from "./engine/index.js";
-import { BOARDS } from "./boards.js";
+import { BOARDS } from "./boards/index.js";
 
 // ---------- stats (localStorage) ----------
 const Stats = {
@@ -81,8 +81,13 @@ function Launch(kind) {
 
 async function Game(kind, session) {
   const isDaily = session.mode === "daily";
-  let seconds = 0, solved = false, timer = null, puzzle = null, board = null;
+  let seconds = 0, solved = false, timer = null, puzzle = null, board = null, hints = 0;
   const timeEl = h("span", {}, "0:00");
+  const hintBtn = h("button", { class: "hintbtn", onclick: () => {
+    if (!board?.hint || solved) return;
+    const msg = board.hint();                   // board applies one step and returns a short German message (or null if nothing to show)
+    if (msg) { hints++; seconds += 30; timeEl.textContent = clock(seconds); hintBtn.textContent = `💡 Tipp (${hints})`; haptic(); toast(msg); }
+  } }, "💡 Tipp");
   const metaL = h("span", {}, isDaily ? "Tagesrätsel" : DIFF_TITLE[session.diff]);
   const wrap = h("div", { class: "board-wrap" }, h("div", { class: "spin" }));
   const tools = h("div", { class: "tools" });
@@ -91,6 +96,7 @@ async function Game(kind, session) {
       h("button", { onclick: () => { stop(); Home(); } }, "‹ Zurück"),
       h("div", { class: "title" }, GAMES[kind].title),
       h("button", { onclick: () => alertSheet(GAMES[kind].title, GAMES[kind].rules) }, "?"),
+      hintBtn,
       isDaily ? h("span", { style: "width:38px" }) : h("button", { onclick: () => load() }, "↻")),
     h("div", { class: "meta" }, metaL, timeEl), wrap, tools);
   render(screen);
@@ -101,7 +107,7 @@ async function Game(kind, session) {
     board?.lock?.();
     const newBest = Stats.record(kind, puzzle.diff, seconds, isDaily);
     const overlay = h("div", { class: "win" }, h("div", { class: "box" },
-      h("div", { class: "check" }, "✓"), h("h2", {}, "Gelöst!"), h("p", {}, `${DIFF_TITLE[puzzle.diff]} · ${clock(seconds)}`),
+      h("div", { class: "check" }, "✓"), h("h2", {}, "Gelöst!"), h("p", {}, `${DIFF_TITLE[puzzle.diff]} · ${clock(seconds)}${hints ? ` · ${hints} Tipp${hints > 1 ? "s" : ""} (+30 s je Tipp)` : ""}`),
       newBest && Stats.g(kind).solved > 1 ? h("div", { class: "nb" }, "Neue Bestzeit") : null,
       h("div", { class: "row" },
         h("button", { class: "btn ghost small", onclick: () => overlay.remove() }, "Ansehen"),
@@ -109,7 +115,7 @@ async function Game(kind, session) {
     wrap.style.position = "relative"; wrap.append(overlay);
   };
   async function load() {
-    stop(); seconds = 0; solved = false; timeEl.textContent = "0:00";
+    stop(); seconds = 0; solved = false; hints = 0; hintBtn.textContent = "💡 Tipp"; timeEl.textContent = "0:00";
     wrap.replaceChildren(h("div", { class: "spin" })); tools.replaceChildren();
     const seed = isDaily ? dailySeed(kind) : randomSeed();
     const diff = isDaily ? dailyDiff() : session.diff;
@@ -128,6 +134,13 @@ async function Game(kind, session) {
   };
   window.addEventListener("resize", fit);
   await load();
+}
+
+let toastEl = null, toastTimer = null;
+export function toast(text) {
+  toastEl?.remove(); clearTimeout(toastTimer);
+  toastEl = h("div", { class: "toast" }, text); document.body.append(toastEl);
+  toastTimer = setTimeout(() => toastEl?.remove(), 2600);
 }
 
 function alertSheet(title, text) {
