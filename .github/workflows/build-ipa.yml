@@ -3,6 +3,7 @@ name: Build IPA
 on:
   push:
     branches: [main]
+    paths-ignore: ["web/**"]
   workflow_dispatch:
 
 permissions:

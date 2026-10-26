@@ -1,0 +1,17 @@
+import * as sudoku from "./sudoku.js";
+import * as queens from "./queens.js";
+import * as tango from "./tango.js";
+import * as zip from "./zip.js";
+import * as patches from "./patches.js";
+import * as nonogram from "./nonogram.js";
+export * from "./core.js";
+
+export const ENGINES = { sudoku, queens, tango, zip, patches, nonogram };
+
+export function generate(kind, diff, seed) {
+  return ENGINES[kind].generate(diff, seed);
+}
+export function randomSeed() {
+  const a = new Uint32Array(2); (globalThis.crypto || require("crypto").webcrypto).getRandomValues(a);
+  return ((BigInt(a[0]) << 32n) | BigInt(a[1])).toString();
+}
