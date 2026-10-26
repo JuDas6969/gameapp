@@ -81,6 +81,23 @@ export function conflicts(p, queens) {
   }
   return out;
 }
+/** Keys (r*64+c) a queen at (r,c) rules out: its row, its column and the 8 neighbours (without the queen's own cell). */
+export function attacked(n, r, c) {
+  const out = [];
+  for (let i = 0; i < n; i++) { if (i !== c) out.push(r * 64 + i); if (i !== r) out.push(i * 64 + c); }
+  for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+    const rr = r + dr, cc = c + dc;
+    if ((dr || dc) && rr >= 0 && cc >= 0 && rr < n && cc < n && dr && dc) out.push(rr * 64 + cc);
+  }
+  return out;
+}
+/** Set of keys excluded by the given queens (iterable of keys): attacked cells, cells of the same region and the queens themselves. */
+export function excluded(p, queens) {
+  const out = new Set(), regs = new Set();
+  for (const k of queens) { const r = Math.floor(k / 64), c = k % 64; out.add(k); regs.add(p.regions[r][c]); for (const a of attacked(p.n, r, c)) out.add(a); }
+  for (let r = 0; r < p.n; r++) for (let c = 0; c < p.n; c++) if (regs.has(p.regions[r][c])) out.add(r * 64 + c);
+  return out;
+}
 export function isSolved(p, queens) {
   if (queens.size !== p.n) return false;
   for (const k of queens) if (p.solution[Math.floor(k / 64)] !== k % 64) return false;

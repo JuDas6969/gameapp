@@ -2,6 +2,7 @@ import { Rng, resolveDiff } from "./core.js";
 const SIZE = { leicht: 5, mittel: 10, schwer: 15, experte: 20 };
 const DENSITY = { leicht: 0.6, mittel: 0.6, schwer: 0.58, experte: 0.55 };
 const UNK = -1, FILL = 1, EMPTY = 0;
+export const LINE = { UNK, FILL, EMPTY };
 
 export function cluesOf(line) {
   const out = []; let run = 0;
@@ -10,7 +11,7 @@ export function cluesOf(line) {
   return out;
 }
 // Line solver via memoised recursion with BigInt bitmasks (n ≤ 20 so Number would do, but keep it simple & safe).
-function solveLine(cells, clues) {
+export function solveLine(cells, clues) {
   const L = cells.length, all = (1n << BigInt(L)) - 1n, W = clues.length + 1;
   const memo = new Map();
   const rec = (i, j) => {

@@ -54,6 +54,48 @@ export function conflicts(p, g) {
   }
   return out;
 }
+/**
+ * Pure helper for hints: finds one logically forced empty cell in g (no wrong entries assumed).
+ * Returns { r, c, v, rule, cells, line } or null. rule ∈ pair|gap|count|constraint.
+ * cells = the cells that justify the deduction (for highlighting), line = { kind:"row"|"col", i } for count.
+ */
+export function deduce(p, g) {
+  const other = (v) => 1 - v;
+  // (1) two equal neighbours → third must differ; (2) X _ X → middle differs
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    if (g[r][c] !== -1) continue;
+    for (const [dr, dc] of [[0, 1], [1, 0]]) {
+      const at = (i) => { const rr = r + dr * i, cc = c + dc * i; return rr < 0 || cc < 0 || rr >= N || cc >= N ? null : g[rr][cc]; };
+      const pos = (i) => [r + dr * i, c + dc * i];
+      // pair to the right/below
+      if (at(1) !== null && at(1) !== -1 && at(1) === at(2)) return { r, c, v: other(at(1)), rule: "pair", cells: [pos(1), pos(2)] };
+      // pair to the left/above
+      if (at(-1) !== null && at(-1) !== -1 && at(-1) === at(-2)) return { r, c, v: other(at(-1)), rule: "pair", cells: [pos(-1), pos(-2)] };
+      // gap
+      if (at(-1) !== null && at(1) !== null && at(-1) !== -1 && at(-1) === at(1)) return { r, c, v: other(at(1)), rule: "gap", cells: [pos(-1), pos(1)] };
+    }
+  }
+  // (3) a line already has N/2 of one kind → rest is the other
+  for (let i = 0; i < N; i++) {
+    for (const kind of ["row", "col"]) {
+      const line = kind === "row" ? g[i] : g.map((x) => x[i]);
+      for (const v of [0, 1]) {
+        if (line.filter((x) => x === v).length !== N / 2) continue;
+        const j = line.indexOf(-1); if (j === -1) continue;
+        const [r, c] = kind === "row" ? [i, j] : [j, i];
+        return { r, c, v: other(v), rule: "count", line: { kind, i }, full: v };
+      }
+    }
+  }
+  // (4) constraint with exactly one side known
+  for (const k of p.constraints) {
+    const va = g[k.a[0]][k.a[1]], vb = g[k.b[0]][k.b[1]];
+    if ((va === -1) === (vb === -1)) continue;
+    const [known, target, kv] = va === -1 ? [k.b, k.a, vb] : [k.a, k.b, va];
+    return { r: target[0], c: target[1], v: k.eq ? kv : other(kv), rule: "constraint", eq: k.eq, cells: [known] };
+  }
+  return null;
+}
 export function generate(diff, seed) {
   const rng = new Rng(seed); diff = resolveDiff(diff, rng);
   const sol = grid(N, -1); fill(sol, rng);

@@ -37,6 +37,11 @@ function placements(n, cr, cc, area, clueKeys) {
   }
   return out;
 }
+/** All geometrically possible rects for the clue at `key` (area match, covers the clue, no other clue inside). Pure helper for hints. */
+export function placementsFor(p, key) {
+  const clueKeys = new Set(Object.keys(p.clues).map(Number)); key = Number(key);
+  return placements(p.n, Math.floor(key / 64), key % 64, p.clues[key], clueKeys);
+}
 /** clues: {key: area} with key = r*64+c */
 export function countSolutions(n, clues, limit = 2) {
   const keys = Object.keys(clues).map(Number), clueKeys = new Set(keys);

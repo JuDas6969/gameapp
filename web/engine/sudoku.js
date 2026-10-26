@@ -45,6 +45,46 @@ export function conflicts(g) {
   }
   return out;
 }
+/** Candidates for an empty cell (ignores the cell's own value). */
+export function candidates(g, r, c) {
+  const out = [];
+  for (let v = 1; v <= N; v++) if (valid(g, r, c, v)) out.push(v);
+  return out;
+}
+/** Cells of the three units (row, column, block) of (r,c). */
+function units(r, c) {
+  const row = [], col = [], blk = [];
+  for (let i = 0; i < N; i++) { row.push([r, i]); col.push([i, c]); }
+  const br = (r >> 1) << 1, bc = Math.floor(c / 3) * 3;
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 3; j++) blk.push([br + i, bc + j]);
+  return { Zeile: row, Spalte: col, Block: blk };
+}
+/**
+ * Next most logical step for the hint button. Returns null when the grid is complete, otherwise
+ * { r, c, v, type: "fix"|"naked"|"hidden"|"any", old, unit } where unit ∈ Zeile|Spalte|Block for hidden singles.
+ */
+export function findHint(g, solution, givens) {
+  // 1. wrong (non-given) entry → correct it first
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)
+    if (g[r][c] && !givens[r][c] && g[r][c] !== solution[r][c]) return { r, c, v: solution[r][c], old: g[r][c], type: "fix" };
+  const empty = [];
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (!g[r][c]) empty.push([r, c]);
+  if (!empty.length) return null;
+  // 2. naked single
+  for (const [r, c] of empty) if (candidates(g, r, c).length === 1) return { r, c, v: solution[r][c], type: "naked" };
+  // 3. hidden single in row/column/block
+  for (const [r, c] of empty) {
+    const v = solution[r][c];
+    for (const [unit, cells] of Object.entries(units(r, c))) {
+      let spots = 0;
+      for (const [rr, cc] of cells) if (!g[rr][cc] && valid(g, rr, cc, v)) spots++;
+      if (spots === 1) return { r, c, v, type: "hidden", unit };
+    }
+  }
+  // 4. fallback: any empty cell
+  const [r, c] = empty[0];
+  return { r, c, v: solution[r][c], type: "any" };
+}
 export function generate(diff, seed) {
   const rng = new Rng(seed); diff = resolveDiff(diff, rng);
   const sol = grid(N, 0); fill(sol, rng);

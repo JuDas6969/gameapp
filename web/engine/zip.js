@@ -94,6 +94,26 @@ export function isSolved(p, path) {
   return expect === p.maxNumber + 1;
 }
 
+/** Length of the longest prefix of `path` that matches p.solution. */
+export function matchingPrefix(p, path) {
+  let i = 0;
+  while (i < path.length && i < p.solution.length && path[i][0] === p.solution[i][0] && path[i][1] === p.solution[i][1]) i++;
+  return i;
+}
+/** Pure hint planner. Returns { type:"cut", keep } when the path deviates from the solution,
+ *  else { type:"extend", cells, target } with 1..maxSteps next cells up to and including the next waypoint (target = its number or null). */
+export function hintStep(p, path, maxSteps = 6) {
+  const k = matchingPrefix(p, path);
+  if (k < path.length) return { type: "cut", keep: k };
+  if (k >= p.solution.length) return null;
+  const cells = []; let target = null;
+  for (let i = k; i < p.solution.length && cells.length < maxSteps; i++) {
+    const [r, c] = p.solution[i]; cells.push([r, c]);
+    const w = p.waypoints[r * p.n + c]; if (w) { target = w; break; }
+  }
+  return { type: "extend", cells, target };
+}
+
 export function generate(diff, seed) {
   const rng = new Rng(seed); diff = resolveDiff(diff, rng);
   const n = SIZE[diff];
