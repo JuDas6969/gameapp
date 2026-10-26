@@ -44,8 +44,17 @@ export function Tango(p, { onSolved, tools, haptic }) {
     for (let j = 0; j < n; j++) { const [r, c] = kind === "row" ? [i, j] : [j, i]; if (g[r][c] === -1 || g[r][c] !== p.solution[r][c]) return false; }
     return true;
   };
-  const draw = () => {
+  // conflicts are shown with a short delay so cycling Sonne → Mond doesn't flash red in between
+  let badShown = new Set(), badTimer = null;
+  const draw = (immediate = false) => {
     const bad = tango.conflicts(p, g);
+    clearTimeout(badTimer);
+    if (immediate || bad.size === 0) badShown = bad;
+    else { badShown = new Set([...badShown].filter((k) => bad.has(k))); badTimer = setTimeout(() => { badShown = tango.conflicts(p, g); paint(); }, 700); }
+    paint();
+  };
+  const paint = () => {
+    const bad = badShown;
     const rowsDone = [...Array(n).keys()].map((i) => lineDone("row", i)), colsDone = [...Array(n).keys()].map((i) => lineDone("col", i));
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
       const { sun, moon, ring } = cells[r * n + c], v = g[r][c];
