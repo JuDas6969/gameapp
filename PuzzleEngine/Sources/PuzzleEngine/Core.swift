@@ -151,7 +151,11 @@ public enum DailySeed {
     /// Stable seed for a given calendar day (local time) and game.
     public static func seed(for date: Date = Date(), game: GameKind, calendar: Calendar = .current) -> UInt64 {
         let comps = calendar.dateComponents([.year, .month, .day], from: date)
-        let day = UInt64((comps.year ?? 0) * 10000 + (comps.month ?? 0) * 100 + (comps.day ?? 0))
+        let y: Int = comps.year ?? 0
+        let m: Int = comps.month ?? 0
+        let d: Int = comps.day ?? 0
+        let dayNumber: Int = y * 10000 + m * 100 + d
+        let day = UInt64(dayNumber)
         var h: UInt64 = 0xCBF29CE484222325
         for byte in game.rawValue.utf8 { h = (h ^ UInt64(byte)) &* 0x100000001B3 }
         return h ^ (day &* 0x9E3779B97F4A7C15)
