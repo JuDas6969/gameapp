@@ -42,6 +42,23 @@ export function placementsFor(p, key) {
   const clueKeys = new Set(Object.keys(p.clues).map(Number)); key = Number(key);
   return placements(p.n, Math.floor(key / 64), key % 64, p.clues[key], clueKeys);
 }
+/** Rect fits the current board: area/clue match and no overlap with `rects`. */
+export const fits = (p, rects, rc) => isValid(p, rc) && !rects.some((x) => overlaps(x, rc));
+/**
+ * UI helper: the player drags from clue `key` to `finger` ([r,c]). Returns {rect, snapped, raw}:
+ * raw = bounding box clue↔finger; rect = raw if it fits, else the unique placement that contains raw,
+ * keeps the finger on its far edge(s) (the patch may only grow backwards past the clue) and fits – else null.
+ */
+export function snapDrag(p, rects, key, finger) {
+  key = Number(key); const cr = Math.floor(key / 64), cc = key % 64, [fr, fc] = finger;
+  const raw = { r: Math.min(cr, fr), c: Math.min(cc, fc), w: Math.abs(cc - fc) + 1, h: Math.abs(cr - fr) + 1 };
+  if (fits(p, rects, raw)) return { rect: raw, snapped: false, raw };
+  if (raw.w * raw.h >= p.clues[key]) return { rect: null, snapped: false, raw };
+  const within = (o) => o.r <= raw.r && o.c <= raw.c && o.r + o.h >= raw.r + raw.h && o.c + o.w >= raw.c + raw.w;
+  const farEdge = (o) => (fr <= cr || o.r + o.h - 1 === fr) && (fr >= cr || o.r === fr) && (fc <= cc || o.c + o.w - 1 === fc) && (fc >= cc || o.c === fc);
+  const cands = placementsFor(p, key).filter((o) => within(o) && farEdge(o) && !rects.some((x) => overlaps(x, o)));
+  return { rect: cands.length === 1 ? cands[0] : null, snapped: cands.length === 1, raw };
+}
 /** clues: {key: area} with key = r*64+c */
 export function countSolutions(n, clues, limit = 2) {
   const keys = Object.keys(clues).map(Number), clueKeys = new Set(keys);
