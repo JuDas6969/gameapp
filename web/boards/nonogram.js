@@ -62,7 +62,7 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
 
   // ---------- pointer handling: 1 finger paints, 2 fingers pinch/pan, double tap resets zoom ----------
   const pts = new Map(); // pointerId → {x, y} relative to el
-  let painting = false, paintId = null, paintSnap = null, startCell = null, moved = false;
+  let painting = false, paintId = null, paintSnap = null, startCell = null, startPt = null, lastCell = null, moved = false;
   let val = 0, lockR = null, lockC = null;
   let pinch = null, ignoreRest = false, lastTap = null;
   const local = (e) => { const r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
@@ -71,12 +71,22 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
   const paintStart = ([r, c]) => {
     val = g[r][c] === tool ? 0 : tool; lockR = lockC = null; g[r][c] = val; haptic(); highlight(r, c); draw();
   };
-  const paintMove = ([r, c]) => {
+  const paintMove = ([r, c], lp) => {
     const [sr, sc] = startCell;
-    if (lockR === null && lockC === null) { if (r === sr) lockR = sr; else if (c === sc) lockC = sc; else return; }
-    if ((lockR !== null && r !== lockR) || (lockC !== null && c !== lockC)) return;
-    if (g[r][c] === val) return;
-    g[r][c] = val; draw();
+    if (r === sr && c === sc) return;
+    // decide direction from the finger's displacement, not from the first cell hit (diagonal jitter)
+    const dx = lp.x - startPt.x, dy = lp.y - startPt.y;
+    if (lockR === null && lockC === null) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 6) return;
+      if (Math.abs(dx) >= Math.abs(dy)) lockR = sr; else lockC = sc;
+    }
+    if (lockR !== null) { if (r !== lockR) return; }
+    else if (c !== lockC) return;
+    // paint every cell between the last painted cell and this one so fast swipes don't skip cells
+    const [pr, pc] = lastCell;
+    if (lockR !== null) { for (let x = Math.min(pc, c); x <= Math.max(pc, c); x++) g[sr][x] = val; }
+    else { for (let y = Math.min(pr, r); y <= Math.max(pr, r); y++) g[y][sc] = val; }
+    lastCell = [r, c]; draw();
   };
   const paintEnd = () => { highlight(null); if (nonogram.isSolved(p, g)) onSolved(); };
 
@@ -90,7 +100,7 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
         restore(lastTap.snap); draw(); resetZoom(); lastTap = null; ignoreRest = true; return;
       }
       const cell = b.cellAt(e); if (!cell) return;
-      painting = true; paintId = e.pointerId; paintSnap = snapshot(); startCell = cell; moved = false; paintStart(cell);
+      painting = true; paintId = e.pointerId; paintSnap = snapshot(); startCell = cell; lastCell = cell; startPt = lp; moved = false; paintStart(cell);
     } else if (pts.size === 2) {
       if (painting) { restore(paintSnap); highlight(null); draw(); painting = false; paintId = null; }
       ignoreRest = true; lastTap = null;
@@ -112,7 +122,7 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
     }
     if (!painting || e.pointerId !== paintId) return;
     const cell = b.cellAt(e); if (!cell) return;
-    moved = true; paintMove(cell);
+    moved = true; paintMove(cell, lp);
   });
   const up = (e) => {
     if (!pts.has(e.pointerId)) return;

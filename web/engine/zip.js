@@ -78,8 +78,13 @@ export function stepError(p, path, r, c) {
   if (Math.abs(lr - r) + Math.abs(lc - c) !== 1) return "Nicht benachbart";
   if (p.walls.includes(edgeKey(lr, lc, r, c))) return "Wand";
   if (path.some(([a, b]) => a === r && b === c)) return "Schon besucht";
+  if (wpAt(lr, lc) === p.maxNumber) return "Die letzte Zahl ist das Ziel";
   const w = wpAt(r, c);
-  if (w) { let seen = 0; for (const [a, b] of path) seen = Math.max(seen, wpAt(a, b)); if (w !== seen + 1) return "Falsche Reihenfolge"; }
+  if (w) {
+    let seen = 0; for (const [a, b] of path) seen = Math.max(seen, wpAt(a, b));
+    if (w !== seen + 1) return "Falsche Reihenfolge";
+    if (w === p.maxNumber && path.length + 1 !== p.n * p.n) return "Erst alle Felder, dann das Ziel";
+  }
   return null;
 }
 export function isSolved(p, path) {
