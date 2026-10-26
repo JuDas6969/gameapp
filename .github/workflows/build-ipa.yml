@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
@@ -19,7 +22,11 @@ jobs:
         run: brew install xcodegen
 
       - name: Engine tests
-        run: cd PuzzleEngine && swift test 2>&1 | tail -40
+        run: |
+          cd PuzzleEngine
+          swift test 2>&1 | tee ../test.log | tail -40
+          cd ..
+          { echo "## Engine tests"; echo '```'; grep -E "error:|failed|Executed|passed" test.log | sed 's|/Users/runner/work/[^ ]*/gameapp/||' | sort -u | head -60; echo '```'; } > report.md
         continue-on-error: true
 
       - name: Generate project
@@ -35,8 +42,17 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build 2>&1 | tee build.log | grep -E "error:|warning: unre|BUILD (SUCCEEDED|FAILED)" || true
+            build 2>&1 | tee build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+          { echo "## Xcode build"; echo '```'; grep -E "error:|BUILD (SUCCEEDED|FAILED)" build.log | sed 's|/Users/runner/work/[^ ]*/gameapp/||' | sort -u | head -80; echo '```'; } >> report.md
           grep -q "BUILD SUCCEEDED" build.log
+
+      - name: Report to commit comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f report.md ] || echo "no report" > report.md
+          gh api repos/${{ github.repository }}/commits/${{ github.sha }}/comments -f body="$(cat report.md | head -c 60000)" >/dev/null || true
 
       - name: Package IPA
         run: |
