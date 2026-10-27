@@ -89,3 +89,22 @@ h1, h2 { margin: 0; font-family: "New York", "Iowan Old Style", Georgia, serif; 
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(96px + env(safe-area-inset-bottom)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 14px; font-weight: 600; z-index: 30; max-width: 90vw; text-align: center; animation: fade .15s; pointer-events: none; }
 .top .hintbtn { font-size: 13px; font-weight: 600; white-space: nowrap; }
 .hintcell { fill: var(--ok) !important; }
+
+/* ---- parity additions: undo, status, streak per card, share ---- */
+.sheet p { white-space: pre-line; }
+.card .foot { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.card .cstreak { color: var(--accent); font-weight: 700; font-size: 12.5px; white-space: nowrap; }
+.card .cstreak .frz { font-weight: 400; font-size: 11px; }
+.top .undobtn { font-size: 20px; line-height: 1; min-width: 40px; min-height: 40px; padding: 6px 8px; }
+.top .undobtn:disabled { opacity: .3; }
+.top .hintbtn { min-height: 40px; }
+.win .box { max-width: min(92vw, 360px); }
+.win .status { font-weight: 700; font-size: 14px; color: var(--muted); margin: -8px 0 10px; }
+.win .status.ok { color: var(--ok); }
+.win .mline { font-size: 15px; margin: 0 0 10px; letter-spacing: .04em; }
+.win .nb { margin-bottom: 8px; }
+.win .nb.streak { color: var(--accent); }
+.win .row { flex-wrap: wrap; }
+.top { gap: 4px; }
+.top button { padding: 8px 7px; }
+.top .title { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

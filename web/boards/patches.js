@@ -32,7 +32,16 @@ export function Patches(p, { onSolved, tools, haptic }) {
   }
 
   const setMsg = msgBar(tools, "");
-  const clear = h("button", { onclick: () => { rects = []; draw(); } }, "Löschen"); tools.append(clear);
+  const clear = h("button", { onclick: () => b.clear() }, "Löschen"); tools.append(clear); // undo lives in the app's top bar (b.undo/b.canUndo)
+
+  // undo stack (one snapshot per gesture / hint / clear) + redraw counter (removed or replaced rects)
+  const history = []; let redraws = 0;
+  const same = (a, c2) => a.r === c2.r && a.c === c2.c && a.w === c2.w && a.h === c2.h;
+  const snap = () => rects.map((rc) => ({ ...rc }));
+  const stateKey = (rs) => rs.map((rc) => `${rc.r},${rc.c},${rc.w},${rc.h}`).sort().join("|");
+  // how many rects of `before` are no longer present in `after` (= removed or replaced)
+  const lost = (before, after) => before.filter((rc) => !after.some((x) => same(x, rc))).length;
+  const commit = (before) => { if (stateKey(before) !== stateKey(rects)) { history.push(before); redraws += lost(before, rects); } };
 
   const rectAttrs = (rc, inset = 3) => ({ x: rc.c * S + inset, y: rc.r * S + inset, width: rc.w * S - 2 * inset, height: rc.h * S - 2 * inset });
   const clueIn = (rc) => clueKeys.find((k) => patches.contains(rc, Math.floor(k / 64), k % 64));
@@ -59,6 +68,7 @@ export function Patches(p, { onSolved, tools, haptic }) {
       const cy = shown.r > 0 ? shown.r * S - 34 : (shown.r + shown.h) * S + 34;
       lblG.setAttribute("transform", `translate(${cx},${cy})`); lblG.setAttribute("visibility", "visible");
     } else { prevEl.setAttribute("visibility", "hidden"); lblG.setAttribute("visibility", "hidden"); }
+    if (pendingHint && pendingHint.key !== stateKey(rects)) clearHintPreview();
     clear.disabled = !rects.length;
     setMsg(rects.length ? `${rects.length} von ${total} Flicken` : `Von einer Zahl aus ein Rechteck ziehen · 0 von ${total} Flicken`);
   };
@@ -89,9 +99,10 @@ export function Patches(p, { onSolved, tools, haptic }) {
   };
 
   // --- interaction ---
+  let before = null; // rects snapshot at pointer-down
   b.drag({
     onStart: (cell) => {
-      anchor = null; anchorKey = null; picked = null; preview = null; t0 = performance.now();
+      anchor = null; anchorKey = null; picked = null; preview = null; t0 = performance.now(); before = snap();
       const [r, c] = cell, k = clueAt(r, c), ri = rectAt(r, c);
       if (ri >= 0) { picked = rects.splice(ri, 1)[0]; anchorKey = clueIn(picked); }
       else if (k != null) anchorKey = k;
@@ -102,29 +113,56 @@ export function Patches(p, { onSolved, tools, haptic }) {
     onMove: (cell) => { if (!anchor) return; preview = span(cell); draw(); },
     onEnd: (moved) => {
       if (!anchor) return;
-      const rc = preview?.rect, key = anchorKey, old = picked, dt = performance.now() - t0;
-      preview = null; anchor = null; picked = null; anchorKey = null;
+      const rc = preview?.rect, key = anchorKey, old = picked, dt = performance.now() - t0, b0 = before || snap();
+      preview = null; anchor = null; picked = null; anchorKey = null; before = null;
       const tap = !moved && dt < 250;
+      const place = (x) => { rects.push(x); commit(b0); haptic(); draw(); if (patches.isSolved(p, rects)) onSolved(); };
       if (tap) {
-        if (old) { haptic(); draw(); return; } // tap on a finished rect → removed
-        if (p.clues[key] === 1 && rc) { rects.push(rc); haptic(); draw(); if (patches.isSolved(p, rects)) onSolved(); return; }
+        if (old) { commit(b0); haptic(); draw(); return; } // tap on a finished rect → removed (= 1 redraw)
+        if (p.clues[key] === 1 && rc) { place(rc); return; }
         draw(); const cnt = showPlacements(key);
         setMsg(cnt === 1 ? "Die passt nur so hinein" : `${cnt} Möglichkeiten für die ${p.clues[key]}`);
         return;
       }
-      if (rc && fits(rc)) { rects.push(rc); haptic(); draw(); if (patches.isSolved(p, rects)) onSolved(); return; }
+      if (rc && fits(rc)) { place(rc); return; }
       // invalid: put a picked-up rect back, shake the clue
       if (old) rects.push(old);
       draw(); shakeClue(key); haptic(20);
     },
   });
 
-  // --- hints ---
-  const same = (a, c2) => a.r === c2.r && a.c === c2.c && a.w === c2.w && a.h === c2.h;
+  // --- board API: undo / clear / metrics ---
+  b.canUndo = () => history.length > 0;
+  b.undo = () => {
+    if (!history.length) return false;
+    const prev = history.pop(); redraws += lost(rects, prev); rects = prev.map((rc) => ({ ...rc }));
+    clearHintPreview(); draw(); return true;
+  };
+  b.clear = () => {
+    if (!rects.length) return;
+    history.push(snap()); redraws += rects.length; rects = []; clearHintPreview(); draw();
+  };
+  b.metrics = () => ({ redraws, line: redraws === 0 ? "Keine Neuzeichnungen" : redraws === 1 ? "1 Neuzeichnung" : `${redraws} Neuzeichnungen` });
+
+  // --- hints (two-stage: 1st call previews the placement as a dashed outline, 2nd call within 20 s places it) ---
+  const HINT_TTL = 20000;
+  let pendingHint = null, hintOutline = null; // { key, rect, forced, at }
+  function clearHintPreview() { pendingHint = null; hintOutline?.remove(); hintOutline = null; }
   b.hint = () => {
-    // (a) a placed rect that is not part of the solution → remove it
+    // (a) a placed rect that is not part of the solution → remove it right away (correction, counts as redraw)
     const wrong = rects.findIndex((rc) => !p.solution.some((s) => same(s, rc)));
-    if (wrong >= 0) { const rc = rects[wrong]; rects.splice(wrong, 1); draw(); flashRect(rc, "var(--bad)"); return "Dieses Rechteck ist falsch"; }
+    if (wrong >= 0) {
+      const b0 = snap(), rc = rects[wrong]; rects.splice(wrong, 1); commit(b0); clearHintPreview(); draw(); flashRect(rc, "var(--bad)");
+      return "Dieses Rechteck ist falsch – entfernt";
+    }
+    // stage 2: same board, previewed within the last 20 s → place it
+    if (pendingHint && pendingHint.key === stateKey(rects) && Date.now() - pendingHint.at < HINT_TTL) {
+      const { rect, forced } = pendingHint, b0 = snap(); clearHintPreview();
+      rects.push({ ...rect }); commit(b0); draw(); flashRect(rect, "var(--ok)");
+      if (patches.isSolved(p, rects)) onSolved();
+      return forced ? `Die ${rect.w * rect.h} passt nur so hinein` : "Rechteck gesetzt";
+    }
+    clearHintPreview();
     // (b) a missing solution rect – prefer one whose clue has exactly one placement that fits the current board
     const missing = p.solution.filter((s) => !rects.some((rc) => same(rc, s)));
     if (!missing.length) return null;
@@ -136,9 +174,13 @@ export function Patches(p, { onSolved, tools, haptic }) {
     }
     if (!pick) pick = missing[0];
     const area = pick.w * pick.h;
-    rects.push({ ...pick }); draw(); flashRect(pick, "var(--ok)");
-    if (patches.isSolved(p, rects)) onSolved();
-    return forced ? `Die ${area} passt nur so hinein` : "Ein Rechteck ergänzt";
+    hintOutline = svgEl("rect", { ...rectAttrs(pick, 7), rx: 8, fill: "rgba(52,168,83,.12)", stroke: "var(--ok)", "stroke-width": 5, "stroke-dasharray": "14 10", opacity: .95, "pointer-events": "none" });
+    fx.append(hintOutline);
+    pendingHint = { key: stateKey(rects), rect: { ...pick }, forced, at: Date.now() };
+    setTimeout(() => { if (pendingHint && Date.now() - pendingHint.at >= HINT_TTL) clearHintPreview(); }, HINT_TTL + 50);
+    const msg = forced ? `Die ${area} passt nur so hinein` : `So liegt die ${area}`;
+    setMsg(`${msg} – nochmal tippen zum Setzen`);
+    return `${msg} – Tipp nochmal tippen, um zu setzen`;
   };
 
   draw(); return b;

@@ -3,19 +3,45 @@
 export const DIFFS = ["leicht", "mittel", "schwer", "experte"];
 export const DIFF_TITLE = { leicht: "Leicht", mittel: "Mittel", schwer: "Schwer", experte: "Experte", zufaellig: "Zufällig" };
 
+const UNIQUE = "Jedes Rätsel hat genau eine Lösung und ist ohne Raten lösbar.";
 export const GAMES = {
   sudoku:   { title: "Mini-Sudoku", icon: "#",  subtitle: "6×6 – jede Zahl einmal pro Zeile, Spalte und Block",
-              rules: "Fülle das 6×6-Gitter so, dass jede Zeile, jede Spalte und jeder 2×3-Block die Zahlen 1 bis 6 genau einmal enthält." },
+              rules: `Fülle das 6×6-Gitter mit den Zahlen 1 bis 6.
+Jede Zeile, jede Spalte und jeder 2×3-Block enthält jede Zahl genau einmal.
+Feld antippen, dann Zahl wählen. ✎ schaltet Notizen ein, ⌫ löscht.
+${UNIQUE}` },
   queens:   { title: "Königinnen", icon: "♛", subtitle: "Eine Königin pro Zeile, Spalte und Farbfeld",
-              rules: "Setze in jede Zeile, jede Spalte und jedes Farbfeld genau eine Königin. Königinnen dürfen sich nicht berühren – auch nicht diagonal. Tippen: leer → × → Königin. Ziehen malt ×." },
+              rules: `Setze in jede Zeile, jede Spalte und jedes Farbfeld genau eine 👑.
+Zwei 👑 dürfen sich nicht berühren – auch nicht diagonal.
+Einmal tippen setzt ×, zweimal tippen setzt 👑. Ziehen malt × über mehrere Felder.
+${UNIQUE}` },
   tango:    { title: "Duo", icon: "☀", subtitle: "Sonne & Mond – nie drei gleiche in Folge",
-              rules: "Fülle jedes Feld mit Sonne oder Mond. Jede Zeile und Spalte enthält gleich viele von beiden. Nie mehr als zwei gleiche nebeneinander. = bedeutet gleich, × bedeutet verschieden." },
+              rules: `Fülle jedes Feld mit 🌞 oder 🌚. Tippen wechselt: leer → 🌞 → 🌚.
+Nie mehr als zwei gleiche direkt nebeneinander oder untereinander.
+Jede Zeile und jede Spalte enthält gleich viele 🌞 und 🌚.
+= verbundene Felder sind gleich, × verbundene Felder sind verschieden.
+${UNIQUE}` },
   zip:      { title: "Pfad", icon: "↯", subtitle: "Verbinde die Zahlen der Reihe nach über jedes Feld",
-              rules: "Zeichne einen Pfad von 1 bis zur höchsten Zahl, der jedes Feld genau einmal besucht und die Zahlen in aufsteigender Reihenfolge durchläuft. Wände können nicht gekreuzt werden. Zurückziehen löscht." },
+              rules: `Verbinde die Zahlen der Reihe nach: Ziehe einen Pfad von 1 bis zur höchsten Zahl.
+Der Pfad besucht jedes Feld genau einmal und darf keine Wand kreuzen.
+Zurückziehen löscht den Pfad bis zu diesem Feld.
+${UNIQUE}` },
   patches:  { title: "Flicken", icon: "▦", subtitle: "Teile das Gitter in Rechtecke mit passender Fläche",
-              rules: "Teile das Gitter vollständig in Rechtecke. Jedes Rechteck enthält genau eine Zahl, und diese Zahl entspricht seiner Fläche. Ziehen spannt ein Rechteck auf, Tippen entfernt es." },
+              rules: `Teile das Gitter vollständig in rechteckige und quadratische Flicken.
+Jeder Flicken enthält genau eine Zahl – sie gibt seine Fläche an.
+Von der Zahl aus ziehen spannt einen Flicken auf, Antippen entfernt ihn.
+${UNIQUE}` },
   nonogram: { title: "Nonogramm", icon: "▚", subtitle: "Male das Bild anhand der Zahlenhinweise",
-              rules: "Die Zahlen beschreiben die Längen zusammenhängender Blöcke in jeder Zeile und Spalte, in Reihenfolge und durch mindestens ein leeres Feld getrennt. Werkzeug unten wählen, dann tippen oder ziehen." },
+              rules: `Die Zahlen am Rand nennen die Längen der gefüllten Blöcke in jeder Zeile und Spalte – in dieser Reihenfolge.
+Zwischen zwei Blöcken bleibt mindestens ein Feld leer.
+Werkzeug unten wählen (füllen oder ×), dann tippen oder ziehen.
+${UNIQUE}` },
+  hashi: { title: "Brücken", icon: "⊶", subtitle: "Verbinde die Inseln mit Brücken – die Zahl zählt",
+    rules: "Verbinde alle Inseln mit waagrechten oder senkrechten Brücken, sodass jede Insel genau so viele Brücken hat, wie ihre Zahl angibt. Zwischen zwei Inseln liegen höchstens zwei Brücken, Brücken dürfen sich nicht kreuzen, und am Ende müssen alle Inseln zusammenhängen.\nZiehen von Insel zu Insel oder Tippen auf eine Brücke schaltet 0 → 1 → 2 → 0." },
+  slitherlink: { title: "Rundweg", icon: "◌", subtitle: "Zeichne eine geschlossene Schleife entlang der Zahlen",
+    rules: "Zeichne entlang der Gitterlinien einen einzigen geschlossenen Rundweg, der sich nicht kreuzt oder verzweigt. Jede Zahl gibt an, wie viele der vier Kanten um dieses Feld zum Rundweg gehören.\nTippen: leer → Linie → × → leer. Ziehen von Punkt zu Punkt zeichnet Linien." },
+  nurikabe: { title: "Inseln", icon: "▞", subtitle: "Umfließe nummerierte Inseln mit zusammenhängendem Wasser",
+    rules: "Jedes Feld ist Wasser oder Insel. Jede Zahl gehört zu genau einer Insel mit so vielen Feldern, und Inseln dürfen sich nicht berühren. Alles Wasser hängt zusammen und bildet nie einen 2×2-Block.\nWerkzeug wählen, dann tippen oder entlang einer Zeile/Spalte ziehen." },
 };
 export const GAME_KEYS = Object.keys(GAMES);
 
@@ -53,6 +79,13 @@ export function dailyDiff(date = new Date()) {
   if (wd === 3 || wd === 4) return "mittel";
   if (wd === 5 || wd === 6) return "schwer";
   return "experte";
+}
+/** Running daily-puzzle number: days since the launch day (local calendar) + 1. */
+export const DAILY_START = [2026, 9, 26]; // 2026-10-26
+export function dailyNumber(date = new Date()) {
+  const a = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const b = new Date(...DAILY_START);
+  return Math.max(1, Math.round((a - b) / 86400000) + 1);
 }
 export function dayKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;

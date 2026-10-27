@@ -2,9 +2,12 @@ import { S, svgEl, h, base, txt, msgBar } from "./_shared.js";
 import * as zip from "../engine/zip.js";
 
 const mid = (r, c) => [c * S + S / 2, r * S + S / 2];
+const HINT_TTL = 20000; // ms – second hint tap within this window executes the previewed step
 
 export function Zip(p, { onSolved, tools, haptic }) {
   const n = p.n, b = base(n, { bg: "rgba(127,127,127,.06)" }); let path = [];
+  // undo stack: one snapshot of `path` per gesture (pointer-down → up, hint, clear)
+  const history = []; let backtracks = 0;
 
   // visited-cell tint (cells layer, below lines)
   const tint = [];
@@ -20,7 +23,9 @@ export function Zip(p, { onSolved, tools, haptic }) {
   const arrow = svgEl("polygon", { points: `${S * 0.08},0 ${-S * 0.06},${-S * 0.09} ${-S * 0.06},${S * 0.09}`, fill: "#fff", opacity: .95, visibility: "hidden" });
   headG.append(head, arrow);
   const fx = svgEl("g", { "pointer-events": "none" }); // transient hint highlights
-  b.layers.mid.append(line, headG, fx);
+  // hint preview: dashed continuation of the path (stage 1 of the two-stage hint)
+  const previewLine = svgEl("polyline", { fill: "none", stroke: "var(--ok)", "stroke-width": S * 0.3, "stroke-linecap": "round", "stroke-linejoin": "round", "stroke-dasharray": `${S * 0.22} ${S * 0.22}`, opacity: .8, visibility: "hidden", "pointer-events": "none" });
+  b.layers.mid.append(line, headG, previewLine, fx);
 
   // walls: thick, rounded, clearly distinct from grid
   for (const w of p.walls) {
@@ -39,11 +44,17 @@ export function Zip(p, { onSolved, tools, haptic }) {
   }
 
   const setMsg = msgBar(tools, "Von 1 aus über jedes Feld ziehen");
-  const undo = h("button", { onclick: () => { path.pop(); draw(); } }, "↶ Zurück");
-  const clear = h("button", { onclick: () => { path = []; draw(); } }, "Löschen");
-  tools.append(undo, clear);
+  const clearBtn = h("button", { onclick: () => b.clear() }, "Löschen"); // undo lives in the app's top bar (b.undo/b.canUndo)
+  tools.append(clearBtn);
+
+  // --- hint preview state ---
+  const pathKey = () => path.map(([r, c]) => r * n + c).join(",");
+  let pending = null; // { key, cells, target, at }
+  const clearPreview = () => { pending = null; previewLine.setAttribute("visibility", "hidden"); };
+  const pendingValid = () => pending && pending.key === pathKey() && Date.now() - pending.at < HINT_TTL;
 
   const draw = () => {
+    if (pending && pending.key !== pathKey()) clearPreview();
     line.setAttribute("points", path.map(([r, c]) => mid(r, c).join(",")).join(" "));
     const L = path.length;
     if (L) {
@@ -62,51 +73,97 @@ export function Zip(p, { onSolved, tools, haptic }) {
       circ.setAttribute("fill", v ? "var(--accent)" : "var(--card)"); circ.setAttribute("stroke", v ? "var(--accent)" : "var(--line-strong)");
       t.style.fill = v ? "#fff" : "var(--ink)";
     }
-    undo.disabled = clear.disabled = !path.length;
+    clearBtn.disabled = !path.length;
   };
+
+  // --- gesture bookkeeping: snapshot at pointer-down, commit at pointer-up ---
+  let gestureStart = null, gestureShortened = false;
+  const beginGesture = () => { gestureStart = path.slice(); gestureShortened = false; };
+  const endGesture = () => {
+    if (!gestureStart) return;
+    const changed = gestureStart.length !== path.length || gestureStart.some(([r, c], i) => path[i][0] !== r || path[i][1] !== c);
+    if (changed) history.push(gestureStart);
+    if (gestureShortened) backtracks++;
+    gestureStart = null; gestureShortened = false; draw();
+  };
+  const shorten = (len) => { path.length = len; gestureShortened = true; };
 
   const extend = (cell) => {
     if (!cell) return; // dragged outside the board
     const [r, c] = cell, L = path.length;
     if (L && path[L - 1][0] === r && path[L - 1][1] === c) return;
-    if (L >= 2 && path[L - 2][0] === r && path[L - 2][1] === c) { path.pop(); draw(); return; }
+    if (L >= 2 && path[L - 2][0] === r && path[L - 2][1] === c) { shorten(L - 1); draw(); return; }
     const idx = path.findIndex(([a, bb]) => a === r && bb === c);
-    if (idx >= 0) { path.length = idx + 1; draw(); return; }
+    if (idx >= 0) { if (idx + 1 < L) shorten(idx + 1); draw(); return; }
     // skipped cells during a fast drag: ignore silently (no "Nicht benachbart" message)
     if (L) { const [lr, lc] = path[L - 1]; if (Math.abs(lr - r) + Math.abs(lc - c) !== 1) return; }
     const err = zip.stepError(p, path, r, c);
     if (err) { setMsg(err, true); haptic(20); return; }
     path.push([r, c]); setMsg(""); if (p.waypoints[r * n + c]) haptic(); draw();
   };
-  b.drag({ onStart: extend, onMove: extend, onEnd: () => { if (zip.isSolved(p, path)) onSolved(); } });
+  b.drag({
+    onStart: (cell) => { beginGesture(); extend(cell); },
+    onMove: extend,
+    onEnd: () => { endGesture(); if (zip.isSolved(p, path)) onSolved(); },
+  });
+
+  // --- board API: undo / clear / metrics ---
+  b.canUndo = () => history.length > 0;
+  b.undo = () => {
+    if (!history.length) return false;
+    const prev = history.pop();
+    if (prev.length < path.length) backtracks++;
+    path = prev.slice(); setMsg(""); draw(); return true;
+  };
+  b.clear = () => {
+    if (!path.length) return;
+    history.push(path.slice()); path = []; backtracks++; setMsg(""); draw();
+  };
+  b.metrics = () => ({ backtracks, line: backtracks === 0 ? "Keine Rückschritte" : backtracks === 1 ? "1 Rückschritt" : `${backtracks} Rückschritte` });
 
   // transient highlight helpers for hints
   const flash = (nodes, ms) => { fx.append(...nodes); setTimeout(() => nodes.forEach((x) => x.remove()), ms); };
   const cellMark = (r, c, fill) => svgEl("rect", { x: c * S + 6, y: r * S + 6, width: S - 12, height: S - 12, rx: 12, fill, opacity: .45 });
   const segMark = (a, bcell, stroke) => { const [x1, y1] = mid(...a), [x2, y2] = mid(...bcell); return svgEl("line", { x1, y1, x2, y2, stroke, "stroke-width": S * 0.5, "stroke-linecap": "round", opacity: .55 }); };
 
-  b.hint = () => {
-    const step = zip.hintStep(p, path, 6);
-    if (!step) return null;
-    if (step.type === "cut") {
-      const cut = path[step.keep], prev = step.keep ? path[step.keep - 1] : null;
-      path.length = step.keep; draw();
-      const marks = [cellMark(cut[0], cut[1], "var(--bad)")]; if (prev) marks.push(segMark(prev, cut, "var(--bad)"));
-      flash(marks, 900); haptic(20);
-      setMsg("Ab hier war's falsch", true);
-      return "Ab hier war's falsch – zurückgesetzt";
-    }
+  const applyCells = (cells, target) => {
+    history.push(path.slice());
     const marks = [];
-    for (const cell of step.cells) {
+    for (const cell of cells) {
       const prev = path.length ? path[path.length - 1] : null;
       if (prev) marks.push(segMark(prev, cell, "var(--ok)"));
       marks.push(cellMark(cell[0], cell[1], "var(--ok)"));
       path.push(cell);
     }
-    draw(); flash(marks, 1100); setMsg("");
-    const msg = step.target != null ? `Weiter bis zur ${step.target}` : step.cells.length === 1 ? "Ein Schritt weiter" : `${step.cells.length} Schritte weiter`;
+    clearPreview(); draw(); flash(marks, 1100); setMsg("");
+    const msg = target != null ? `Weiter bis zur ${target}` : cells.length === 1 ? "Ein Schritt weiter" : `${cells.length} Schritte weiter`;
     if (zip.isSolved(p, path)) onSolved();
     return msg;
+  };
+
+  b.hint = () => {
+    // stage 2: same path, previewed within the last 20 s → draw it
+    if (pendingValid()) { const { cells, target } = pending; return applyCells(cells, target); }
+    clearPreview();
+    const step = zip.hintStep(p, path, 6);
+    if (!step) return null;
+    if (step.type === "cut") {
+      const cut = path[step.keep], prev = step.keep ? path[step.keep - 1] : null;
+      history.push(path.slice()); path.length = step.keep; backtracks++; draw();
+      const marks = [cellMark(cut[0], cut[1], "var(--bad)")]; if (prev) marks.push(segMark(prev, cut, "var(--bad)"));
+      flash(marks, 900); haptic(20);
+      setMsg("Ab hier war's falsch", true);
+      return "Ab hier war's falsch – zurückgesetzt";
+    }
+    // stage 1: dashed preview of the next cells up to the next waypoint
+    const pts = (path.length ? [path[path.length - 1]] : []).concat(step.cells);
+    previewLine.setAttribute("points", pts.map(([r, c]) => mid(r, c).join(",")).join(" "));
+    previewLine.setAttribute("visibility", "visible");
+    pending = { key: pathKey(), cells: step.cells, target: step.target, at: Date.now() };
+    setTimeout(() => { if (pending && Date.now() - pending.at >= HINT_TTL) clearPreview(); }, HINT_TTL + 50);
+    const where = step.target != null ? `So geht's weiter bis zur ${step.target}` : "So geht's weiter";
+    setMsg(`${where} – nochmal tippen zum Zeichnen`);
+    return `${where} – Tipp nochmal tippen, um zu zeichnen`;
   };
 
   draw(); return b;

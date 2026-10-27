@@ -39,8 +39,8 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
   const seg = h("div", { class: "seg" });
   const drawSeg = () => seg.replaceChildren(h("button", { class: tool === 1 ? "on" : "", onclick: () => { tool = 1; drawSeg(); } }, "■ Füllen"), h("button", { class: tool === 2 ? "on" : "", onclick: () => { tool = 2; drawSeg(); } }, "× Markieren"));
   drawSeg();
-  const clear = h("button", { onclick: () => { for (const row of g) row.fill(0); draw(); } }, "Löschen");
-  tools.append(seg, clear);
+  const clearBtn = h("button", { onclick: () => clear() }, "Löschen");
+  tools.append(seg, clearBtn);
   const draw = () => {
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) { const [rc, mark] = cells[r * n + c]; rc.setAttribute("fill", g[r][c] === 1 ? "var(--ink)" : "transparent"); mark.setAttribute("visibility", g[r][c] === 2 ? "visible" : "hidden"); }
     const sat = nonogram.satisfied(p, g);
@@ -48,6 +48,21 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
   };
   const snapshot = () => g.map((row) => row.slice());
   const restore = (snap) => { for (let r = 0; r < n; r++) g[r] = snap[r].slice(); };
+  // ---------- undo stack (one entry per gesture) + error metric ----------
+  const undoStack = []; let errors = 0;
+  const pushUndo = (snap) => { undoStack.push(snap || snapshot()); if (undoStack.length > 200) undoStack.shift(); };
+  const same = (a, c) => a.every((row, r) => row.every((v, i) => v === c[r][i]));
+  /** Setzt eine Zelle und zählt Fehler (gesetzter Wert passt nicht zur Lösung). */
+  const setCell = (r, c, v) => {
+    if (g[r][c] === v) return;
+    const s = !!p.solution[r][c];
+    if ((v === 1 && !s) || (v === 2 && s)) errors++;
+    g[r][c] = v;
+  };
+  const undo = () => { if (!undoStack.length) return false; restore(undoStack.pop()); highlight(null); draw(); return true; };
+  const canUndo = () => undoStack.length > 0;
+  const clear = () => { if (g.some((row) => row.some(Boolean))) pushUndo(); for (const row of g) row.fill(0); draw(); };
+  const metrics = () => ({ line: `${errors} Fehler` });
 
   // ---------- zoom / pan (CSS transform on the svg; no transform at zoom 1) ----------
   el.style.overflow = "hidden"; svg.style.transformOrigin = "0 0";
@@ -69,7 +84,7 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
   const dist = (a, c) => Math.hypot(a.x - c.x, a.y - c.y);
 
   const paintStart = ([r, c]) => {
-    val = g[r][c] === tool ? 0 : tool; lockR = lockC = null; g[r][c] = val; haptic(); highlight(r, c); draw();
+    val = g[r][c] === tool ? 0 : tool; lockR = lockC = null; setCell(r, c, val); haptic(); highlight(r, c); draw();
   };
   const paintMove = ([r, c], lp) => {
     const [sr, sc] = startCell;
@@ -84,8 +99,8 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
     else if (c !== lockC) return;
     // paint every cell between the last painted cell and this one so fast swipes don't skip cells
     const [pr, pc] = lastCell;
-    if (lockR !== null) { for (let x = Math.min(pc, c); x <= Math.max(pc, c); x++) g[sr][x] = val; }
-    else { for (let y = Math.min(pr, r); y <= Math.max(pr, r); y++) g[y][sc] = val; }
+    if (lockR !== null) { for (let x = Math.min(pc, c); x <= Math.max(pc, c); x++) setCell(sr, x, val); }
+    else { for (let y = Math.min(pr, r); y <= Math.max(pr, r); y++) setCell(y, sc, val); }
     lastCell = [r, c]; draw();
   };
   const paintEnd = () => { highlight(null); if (nonogram.isSolved(p, g)) onSolved(); };
@@ -97,12 +112,13 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
       ignoreRest = false;
       const now = performance.now();
       if (lastTap && zs > 1 && now - lastTap.t < 320 && dist(lastTap, lp) < 30) { // double tap → reset zoom, undo first tap
-        restore(lastTap.snap); draw(); resetZoom(); lastTap = null; ignoreRest = true; return;
+        restore(lastTap.snap); if (undoStack.length && same(undoStack[undoStack.length - 1], lastTap.snap)) undoStack.pop(); // first tap is no gesture anymore
+        draw(); resetZoom(); lastTap = null; ignoreRest = true; return;
       }
       const cell = b.cellAt(e); if (!cell) return;
-      painting = true; paintId = e.pointerId; paintSnap = snapshot(); startCell = cell; lastCell = cell; startPt = lp; moved = false; paintStart(cell);
+      painting = true; paintId = e.pointerId; paintSnap = snapshot(); pushUndo(paintSnap); startCell = cell; lastCell = cell; startPt = lp; moved = false; paintStart(cell);
     } else if (pts.size === 2) {
-      if (painting) { restore(paintSnap); highlight(null); draw(); painting = false; paintId = null; }
+      if (painting) { restore(paintSnap); undoStack.pop(); highlight(null); draw(); painting = false; paintId = null; }
       ignoreRest = true; lastTap = null;
       const [a, c] = [...pts.values()];
       pinch = { d0: Math.max(10, dist(a, c)), m0: { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 }, s0: zs, tx0: ztx, ty0: zty };
@@ -138,16 +154,35 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
   svg.addEventListener("pointerup", up); svg.addEventListener("pointercancel", up);
 
   // ---------- hint ----------
-  const flash = (list, bad) => {
+  const unflash = (list) => { for (const [r, c] of list) { const rc = cells[r * n + c][0]; rc.style.fill = ""; rc.classList.remove("hintcell"); } };
+  const flash = (list, bad, ms = 900) => {
     for (const [r, c] of list) { const rc = cells[r * n + c][0]; if (bad) rc.style.fill = "var(--bad)"; else rc.classList.add("hintcell"); }
-    setTimeout(() => { for (const [r, c] of list) { const rc = cells[r * n + c][0]; rc.style.fill = ""; rc.classList.remove("hintcell"); } }, 900);
+    setTimeout(() => unflash(list), ms);
   };
   const finish = () => { draw(); if (nonogram.isSolved(p, g)) onSolved(); };
+  // Zweistufig: 1. Aufruf hebt hervor + erklärt, 2. Aufruf (innerhalb 20 s, gleicher Tipp) führt aus.
+  let pending = null;
+  const HINT_MS = 20000;
   const hint = () => {
+    const plan = planHint(); if (!plan) { pending = null; return null; }
+    const now = performance.now();
+    if (pending && pending.key === plan.key && now - pending.t < HINT_MS) {
+      unflash(pending.cells); pending = null;
+      pushUndo(); for (const [r, c, v] of plan.cells) g[r][c] = v;
+      finish(); flash(plan.cells, plan.bad);
+      return plan.done;
+    }
+    if (pending) unflash(pending.cells);
+    pending = { key: plan.key, t: now, cells: plan.cells };
+    flash(plan.cells, plan.bad, HINT_MS);
+    return plan.msg + " – nochmal tippen zum Ausführen";
+  };
+  /** Nächster Tipp ohne Ausführung: { key, cells:[[r,c,v]], bad, msg, done } oder null. */
+  const planHint = () => {
     // (a) a wrong cell: filled but empty in the solution, or marked × but filled in the solution
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
       const s = !!p.solution[r][c];
-      if ((g[r][c] === 1 && !s) || (g[r][c] === 2 && s)) { g[r][c] = s ? 1 : 2; finish(); flash([[r, c]], true); return "Dieses Feld ist falsch"; }
+      if ((g[r][c] === 1 && !s) || (g[r][c] === 2 && s)) return { key: `bad${r},${c}`, cells: [[r, c, s ? 1 : 2]], bad: true, msg: "Dieses Feld ist falsch", done: "Feld korrigiert" };
     }
     // (b) line logic: find the row/column with the most newly deducible cells
     const { UNK, FILL, EMPTY } = nonogram.LINE;
@@ -168,17 +203,17 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
       best.nw.forEach((v, i) => {
         if (best.line[i] !== UNK || v === UNK) return;
         const r = best.r != null ? best.r : i, c = best.c != null ? best.c : i;
-        g[r][c] = v === FILL ? 1 : 2; changed.push([r, c]);
+        changed.push([r, c, v === FILL ? 1 : 2]);
       });
-      finish(); flash(changed, false);
       const f = best.k === 1 ? "1 Feld" : `${best.k} Felder`;
-      return best.r != null ? `Zeile ${best.r + 1}: ${f} sicher` : `Spalte ${best.c + 1}: ${f} ${best.k === 1 ? "lässt" : "lassen"} sich ableiten`;
+      const msg = best.r != null ? `Zeile ${best.r + 1}: ${f} sicher` : `Spalte ${best.c + 1}: ${f} ${best.k === 1 ? "lässt" : "lassen"} sich ableiten`;
+      return { key: (best.r != null ? "r" : "c") + (best.r ?? best.c) + ":" + changed.map((x) => x.join(".")).join("|"), cells: changed, bad: false, msg, done: `${f} gesetzt` };
     }
     // (c) fallback: fill one solution cell
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (p.solution[r][c] && g[r][c] !== 1) { g[r][c] = 1; finish(); flash([[r, c]], false); return "Ein Feld gefüllt"; }
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (p.solution[r][c] && g[r][c] !== 1) return { key: `fill${r},${c}`, cells: [[r, c, 1]], bad: false, msg: "Dieses Feld gehört zum Bild", done: "Ein Feld gefüllt" };
     return null;
   };
 
   draw();
-  return { ...b, hint };
+  return { ...b, hint, undo, canUndo, clear, metrics };
 }

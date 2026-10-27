@@ -2,7 +2,7 @@ import { Rng, resolveDiff, grid, clone } from "./core.js";
 const N = 6;
 const TARGET = { leicht: 20, mittel: 16, schwer: 12, experte: 0 };
 
-function valid(g, r, c, v) {
+export function valid(g, r, c, v) {
   for (let i = 0; i < N; i++) if (g[r][i] === v || g[i][c] === v) return false;
   const br = (r >> 1) << 1, bc = Math.floor(c / 3) * 3;
   for (let i = 0; i < 2; i++) for (let j = 0; j < 3; j++) if (g[br + i][bc + j] === v) return false;
@@ -52,7 +52,7 @@ export function candidates(g, r, c) {
   return out;
 }
 /** Cells of the three units (row, column, block) of (r,c). */
-function units(r, c) {
+export function units(r, c) {
   const row = [], col = [], blk = [];
   for (let i = 0; i < N; i++) { row.push([r, i]); col.push([i, c]); }
   const br = (r >> 1) << 1, bc = Math.floor(c / 3) * 3;

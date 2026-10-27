@@ -91,6 +91,12 @@ export function attacked(n, r, c) {
   }
   return out;
 }
+/** Keys a queen at (r,c) rules out including its whole colour region (LinkedIn Auto-×): attacked() ∪ region cells, without the queen's own cell. */
+export function autoCells(p, r, c) {
+  const out = new Set(attacked(p.n, r, c)), g = p.regions[r][c];
+  for (let rr = 0; rr < p.n; rr++) for (let cc = 0; cc < p.n; cc++) if (p.regions[rr][cc] === g && !(rr === r && cc === c)) out.add(rr * 64 + cc);
+  return [...out];
+}
 /** Set of keys excluded by the given queens (iterable of keys): attacked cells, cells of the same region and the queens themselves. */
 export function excluded(p, queens) {
   const out = new Set(), regs = new Set();
