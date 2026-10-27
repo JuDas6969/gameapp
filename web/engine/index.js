@@ -11,9 +11,10 @@ import * as kakuro from "./kakuro.js";
 import * as woertle from "./woertle.js";
 import * as wortpfad from "./wortpfad.js";
 import * as treffpunkt from "./treffpunkt.js";
+import * as wortleiter from "./wortleiter.js";
 export * from "./core.js";
 
-export const ENGINES = { sudoku, queens, tango, zip, patches, nonogram, hashi, slitherlink, nurikabe, kakuro, woertle, wortpfad, treffpunkt };
+export const ENGINES = { sudoku, queens, tango, zip, patches, nonogram, hashi, slitherlink, nurikabe, kakuro, woertle, wortpfad, treffpunkt, wortleiter };
 
 export function generate(kind, diff, seed) {
   return ENGINES[kind].generate(diff, seed);

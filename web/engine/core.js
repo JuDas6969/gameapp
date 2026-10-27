@@ -50,6 +50,8 @@ ${UNIQUE}` },
     rules: "Verbinde benachbarte Buchstaben (auch diagonal) zu Wörtern, indem du einen Pfad durch das Gitter ziehst. Jedes Feld gehört am Ende zu genau einem Wort; die Zeile unten verrät Anzahl und Längen der Wörter.\nEin gültiges Wort bleibt farbig stehen, Tippen auf einen Pfad entfernt ihn. Jede Zerlegung aus gültigen Wörtern zählt." },
   treffpunkt: { title: "Treffpunkt", icon: "◎", subtitle: "Fünf Wörter, eine Kategorie – je früher, desto besser",
     rules: "Fünf Wörter haben etwas gemeinsam. Das erste siehst du sofort – rate die Kategorie!\nJeder Fehlversuch deckt das nächste Wort auf. Du hast fünf Versuche; je weniger Wörter du brauchst, desto besser.\nSchreibweise ist egal, Alternativen und kleine Tippfehler werden erkannt." },
+  wortleiter: { title: "Wortleiter", icon: "≡", subtitle: "Fünf Wörter erraten, zur Leiter sortieren, Anfang und Ende finden",
+    rules: "Gib zu jedem der fünf Hinweise das passende Wort ein (alle gleich lang).\nSortiere die Zeilen dann so, dass sich benachbarte Wörter in genau einem Buchstaben unterscheiden – ziehe sie am ≡ oder nutze ▲▼.\nZum Schluss findest du mit zwei weiteren Hinweisen das oberste und das unterste Wort der Leiter." },
 };
 export const GAME_KEYS = Object.keys(GAMES);
 

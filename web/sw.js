@@ -3,8 +3,8 @@ const VERSION = "__VERSION__";
 const CACHE = `raetsel-${VERSION}`;
 const ASSETS = [
   "./", "index.html", "style.css", "app.js", "worker.js", "manifest.webmanifest",
-  "engine/index.js", "engine/core.js", "engine/sudoku.js", "engine/queens.js", "engine/tango.js", "engine/zip.js", "engine/patches.js", "engine/nonogram.js", "engine/hashi.js", "engine/slitherlink.js", "engine/nurikabe.js", "engine/kakuro.js", "engine/woertle.js", "engine/wortpfad.js", "engine/treffpunkt.js", "data/treffpunkt.js",
-  "boards/index.js", "boards/_shared.js", "boards/sudoku.js", "boards/queens.js", "boards/tango.js", "boards/zip.js", "boards/patches.js", "boards/nonogram.js", "boards/hashi.js", "boards/slitherlink.js", "boards/nurikabe.js", "boards/kakuro.js", "boards/woertle.js", "boards/wortpfad.js", "boards/treffpunkt.js", "boards/_keyboard.js", "data/words.js",
+  "engine/index.js", "engine/core.js", "engine/sudoku.js", "engine/queens.js", "engine/tango.js", "engine/zip.js", "engine/patches.js", "engine/nonogram.js", "engine/hashi.js", "engine/slitherlink.js", "engine/nurikabe.js", "engine/kakuro.js", "engine/woertle.js", "engine/wortpfad.js", "engine/treffpunkt.js", "data/treffpunkt.js", "engine/wortleiter.js", "data/wortleiter.js",
+  "boards/index.js", "boards/_shared.js", "boards/sudoku.js", "boards/queens.js", "boards/tango.js", "boards/zip.js", "boards/patches.js", "boards/nonogram.js", "boards/hashi.js", "boards/slitherlink.js", "boards/nurikabe.js", "boards/kakuro.js", "boards/woertle.js", "boards/wortpfad.js", "boards/treffpunkt.js", "boards/wortleiter.js", "boards/_keyboard.js", "data/words.js",
   "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-512-maskable.png",
 ];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())); });
