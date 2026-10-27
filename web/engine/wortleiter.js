@@ -132,6 +132,14 @@ export function endWords(p, orient) {
   return orient === -1 ? [p.ladder[TOTAL - 1], p.ladder[0]] : [p.ladder[0], p.ladder[TOTAL - 1]];
 }
 
+/** Zielreihenfolge der Mittelwörter (Leiter oder Umkehrung), die der aktuellen Reihenfolge am nächsten ist. */
+export function sortTarget(p, order = []) {
+  const m = p.ladder.slice(1, TOTAL - 1);
+  const score = (t) => t.reduce((s, w, i) => s + (order[i] === w ? 1 : 0), 0);
+  const rev = [...m].reverse();
+  return score(rev) > score(m) ? rev : m;
+}
+
 /**
  * Tipp. state = { phase: 1|2|3, word, buffer, order, orient }:
  *  Phase 1/3: word = Lösungswort der aktiven Zeile, buffer = eingegebene Buchstaben → { type:"letter", pos, letter }
@@ -140,11 +148,8 @@ export function endWords(p, orient) {
 export function findHint(p, state) {
   if (!state) return null;
   if (state.phase === 2) {
-    const m = p.ladder.slice(1, TOTAL - 1);
     const order = state.order || [];
-    const score = (t) => t.reduce((s, w, i) => s + (order[i] === w ? 1 : 0), 0);
-    const rev = [...m].reverse();
-    const target = score(rev) > score(m) ? rev : m;
+    const target = sortTarget(p, order);
     for (let i = 0; i < MIDDLE; i++) {
       if (order[i] === target[i]) continue;
       const j = order.indexOf(target[i]);

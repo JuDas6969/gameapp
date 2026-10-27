@@ -48,7 +48,7 @@ ${UNIQUE}` },
   treffpunkt: { title: "Treffpunkt", icon: "◎", subtitle: "Fünf Wörter, eine Kategorie – je früher, desto besser",
     rules: "Fünf Wörter haben etwas gemeinsam. Das erste siehst du sofort – rate die Kategorie!\nJeder Fehlversuch deckt das nächste Wort auf. Du hast fünf Versuche; je weniger Wörter du brauchst, desto besser.\nSchreibweise ist egal, Alternativen und kleine Tippfehler werden erkannt." },
   wortleiter: { title: "Wortleiter", icon: "≡", subtitle: "Fünf Wörter erraten, zur Leiter sortieren, Anfang und Ende finden",
-    rules: "Gib zu jedem der fünf Hinweise das passende Wort ein (alle gleich lang).\nSortiere die Zeilen dann so, dass sich benachbarte Wörter in genau einem Buchstaben unterscheiden – ziehe sie am ≡ oder nutze ▲▼.\nZum Schluss findest du mit zwei weiteren Hinweisen das oberste und das unterste Wort der Leiter." },
+    rules: "Gib zu jedem Hinweis das passende Wort ein – alle Wörter sind gleich lang. Zeilen antippen zum Bearbeiten, am ═ ziehen zum Sortieren, jederzeit.\nOrdne die Wörter so, dass sich benachbarte Zeilen in genau einem Buchstaben unterscheiden.\nSind die mittleren Zeilen richtig und sortiert, öffnen sich die oberste und unterste Zeile mit einem gemeinsamen Hinweis." },
   kreuzwort: { title: "Kreuzwort", icon: "⊞", subtitle: "Klassisches Kreuzworträtsel mit schwarzen Feldern",
     rules: "Trage zu jedem Hinweis das gesuchte Wort waagrecht oder senkrecht ins Gitter ein – ein Buchstabe pro Feld, Umlaute als Ä, Ö, Ü.\nFeld antippen wählt das Wort, nochmal tippen wechselt zwischen waagrecht und senkrecht; ‹ › springt zum nächsten Hinweis. Auto-Check markiert falsche Buchstaben rot." },
 };

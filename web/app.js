@@ -174,7 +174,12 @@ async function Game(kind, session) {
     if (typeof res === "string") { showPanel(res, false); return; }
     // structured hint: { text, focus, target, strike, apply }
     board.spotlight?.(res);
-    if (res.apply) { pendingHint = res; showPanel(res.text, true); }
+    if (res.apply && board.instantHints) {
+      // word games: the hint fills in right away (letter / word), the panel only explains why
+      const after = res.apply(); updateUndo();
+      showPanel(`${res.text.split("\n")[0]}\n${after || "Eingesetzt."}`, false);
+      setTimeout(clearSpot, 1800);
+    } else if (res.apply) { pendingHint = res; showPanel(res.text, true); }
     else showPanel(res.text, false);
   }
   function applyHint() {
@@ -315,7 +320,12 @@ function iosInstallTip() {
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").then((reg) => reg.update()).catch(() => {});
   // a new version took over → reload once so the player sees it immediately
+  // only when an *old* version was in control (not on the very first visit), and never mid-game or with a sheet open
+  const hadController = !!navigator.serviceWorker.controller;
   let reloaded = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => { if (!reloaded && !document.querySelector(".game")) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController || reloaded || document.querySelector(".game, .scrim")) return;
+    reloaded = true; location.reload();
+  });
 }
 Home();

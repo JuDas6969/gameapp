@@ -51,6 +51,8 @@ for (const diff of DIFFS) {
     console.log(`${kind.padEnd(9)} ${diff.padEnd(8)} ${ms.padStart(6)} ms`);
   }
 }
+// Nonogramm: Tipps kommen nie in den Rückfall (10 Seeds je Stufe)
+for (const diff of DIFFS) for (let s = 1; s <= 10; s++) assert(nonogram.logicSolvable(nonogram.generate(diff, 300 + s)), `nonogram ${diff} seed ${300 + s} logicSolvable`);
 // JSON round trip (worker transfer)
 for (const kind of GAME_KEYS) { const p = ENGINES[kind].generate("leicht", 5); assert(JSON.stringify(JSON.parse(JSON.stringify(p))) === JSON.stringify(p), `${kind} json`); }
 

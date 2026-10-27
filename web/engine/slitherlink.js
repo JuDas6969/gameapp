@@ -232,14 +232,16 @@ export function generate(diff, seed) {
     const target = Math.ceil(CLUE_FRAC[diff] * n * n);
     let visible = n * n;
     const order = rng.shuffle([...Array(n * n).keys()]);
+    const solution = []; for (let e = 0; e < g.E; e++) if (on[e]) solution.push(g.keys[e]);
+    const toP = () => { const clues2 = []; for (let r = 0; r < n; r++) clues2.push(Array.from(clues.subarray(r * n, r * n + n))); return { kind: "slitherlink", n, diff, clues: clues2, solution }; };
+    // Jeder Schritt muss mit einem begründeten Tipp gehen (nie „fallback“) – das impliziert auch Eindeutigkeit.
+    if (!logicSolvable(toP())) continue;
     for (const c of order) {
       if (visible <= target) break;
       const old = clues[c]; clues[c] = -1;
-      if (solver.count(2) === 1) visible--; else clues[c] = old;
+      if (logicSolvable(toP())) visible--; else clues[c] = old;
     }
-    const clues2 = []; for (let r = 0; r < n; r++) clues2.push(Array.from(clues.subarray(r * n, r * n + n)));
-    const solution = []; for (let e = 0; e < g.E; e++) if (on[e]) solution.push(g.keys[e]);
-    return { kind: "slitherlink", n, diff, clues: clues2, solution };
+    return toP();
   }
 }
 
@@ -406,9 +408,78 @@ export function explainHint(p, edges, crosses = new Set()) {
     if (deg[nd] === 2 && fr.length && okCross(fr)) return base({ kind: "node2", text: "Durch diesen Punkt laufen schon zwei Linien – der Rundweg geht hier nicht weiter.\nMarkieren Sie die übrigen Wege mit ×.", nodes: [g.nodeRC(nd)], focusEdges: ks.filter((k) => edges.has(k)), targetEdges: fr, ops: cross(fr) });
     if (deg[nd] === 0 && fr.length === 1 && okCross(fr)) return base({ kind: "deadend", text: "Von diesem Punkt führt nur noch ein Weg weg – eine Linie hier wäre eine Sackgasse.\nMarkieren Sie ihn mit ×.", nodes: [g.nodeRC(nd)], targetEdges: fr, ops: cross(fr) });
   }
-  // 8) Rückfall: Lösungskante, bevorzugt am gezeichneten Weg
+  // 8) Zwei benachbarte 3er → gemeinsame Kante und beide äußeren Parallelkanten
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (p.clues[r][c] !== 3) continue;
+    for (const [dr, dc] of [[0, 1], [1, 0]]) {
+      const r2 = r + dr, c2 = c + dc; if (r2 >= n || c2 >= n || p.clues[r2][c2] !== 3) continue;
+      const ks = dr ? [g.keys[g.h(r, c)], g.keys[g.h(r + 1, c)], g.keys[g.h(r + 2, c)]] : [g.keys[g.v(r, c)], g.keys[g.v(r, c + 1)], g.keys[g.v(r, c + 2)]];
+      const t = ks.filter((k) => !edges.has(k));
+      if (t.length && t.every(isFree) && okAdd(t)) return base({ kind: "33", text: "Zwei 3er nebeneinander: Die Linie muss zwischen ihnen hindurch und an beiden Außenseiten entlang laufen.\nZeichnen Sie die hervorgehobenen Kanten.", cells: [[r, c], [r2, c2]], targetEdges: t, ops: add(t) });
+    }
+  }
+  // 9) Ecke einer 1 oder 3: Wie viele Kanten der Zahl treffen sich an diesem Punkt?
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const v = p.clues[r][c]; if (v !== 1 && v !== 3) continue;
+    const ck = cellKeys(r, c); if (!ck.some(isFree)) continue;
+    // Ecken: [Knoten, Kanten der Zelle an diesem Knoten]
+    const [top, bottom, left, right] = ck;
+    const corners = [[r * (n + 1) + c, [top, left]], [r * (n + 1) + c + 1, [top, right]], [(r + 1) * (n + 1) + c, [bottom, left]], [(r + 1) * (n + 1) + c + 1, [bottom, right]]];
+    for (const [nd, at] of corners) {
+      if (!at.every(isFree)) continue;
+      const outer = nodeKeys(nd).filter((k) => !at.includes(k));
+      const rest = ck.filter((k) => !at.includes(k)), t = rest.filter(isFree);
+      if (!t.length) continue;
+      const lineIn = deg[nd] === 1 && outer.every((k) => edges.has(k) || crosses.has(k));
+      const closed = deg[nd] === 0 && outer.every((k) => crosses.has(k));
+      if (!lineIn && !closed) continue;
+      const pt = [g.nodeRC(nd)], foc = outer.filter((k) => edges.has(k));
+      if (lineIn && v === 1 && okCross(t)) return base({ kind: "corner1", text: "Die Linie muss an diesem Punkt in eine Kante der 1 weiterlaufen – damit ist die 1 dort schon verbraucht.\nMarkieren Sie die beiden gegenüberliegenden Kanten mit ×.", cells: [[r, c]], nodes: pt, focusEdges: foc, targetEdges: t, ops: cross(t) });
+      if (lineIn && v === 3 && okAdd(t)) return base({ kind: "corner3in", text: "Die Linie läuft an diesem Punkt in genau eine Kante der 3 weiter. Die übrigen zwei Kanten braucht die 3 dann beide.\nZeichnen Sie die hervorgehobenen Kanten.", cells: [[r, c]], nodes: pt, focusEdges: foc, targetEdges: t, ops: add(t) });
+      if (closed && v === 1 && okCross(at)) return base({ kind: "cornerout1", text: "An diesem Punkt kann die Linie nur um die Ecke der 1 laufen – das wären zwei Kanten, zu viele für eine 1.\nMarkieren Sie beide Kanten an dieser Ecke mit ×.", cells: [[r, c]], nodes: pt, targetEdges: at, ops: cross(at) });
+      if (closed && v === 3 && okAdd(at)) return base({ kind: "cornerout3", text: "An diesem Punkt kann die Linie nur um die Ecke der 3 laufen – ohne diese Ecke blieben der 3 nur zwei Kanten.\nZeichnen Sie beide Kanten an dieser Ecke.", cells: [[r, c]], nodes: pt, targetEdges: at, ops: add(at) });
+    }
+  }
+  // 10) Kante würde den Weg vorzeitig zu einer Schleife schließen
+  {
+    const endOf = new Map(); // Knoten mit Grad 1 → anderes Ende desselben Wegstücks
+    for (let nd = 0; nd < g.N; nd++) {
+      if (deg[nd] !== 1 || endOf.has(nd)) continue;
+      let cur = nd, prev = -1, len = 0;
+      for (;;) {
+        let nxt = -1; for (let i = 0; i < g.nodeDeg[cur]; i++) { const f = g.nodeEdges[cur * 4 + i]; if (f !== prev && edges.has(g.keys[f])) { nxt = f; break; } }
+        if (nxt < 0) break;
+        cur = g.edgeNodes[nxt * 2] === cur ? g.edgeNodes[nxt * 2 + 1] : g.edgeNodes[nxt * 2]; prev = nxt; len++;
+        if (len > edges.size) break;
+      }
+      if (cur !== nd && deg[cur] === 1) { endOf.set(nd, { other: cur, len }); endOf.set(cur, { other: nd, len }); }
+    }
+    for (const [a, { other: b, len }] of endOf) {
+      if (a > b) continue;
+      for (let i = 0; i < g.nodeDeg[a]; i++) {
+        const f = g.nodeEdges[a * 4 + i], k = g.keys[f]; if (!isFree(k)) continue;
+        const o = g.edgeNodes[f * 2] === a ? g.edgeNodes[f * 2 + 1] : g.edgeNodes[f * 2]; if (o !== b) continue;
+        // Schließen wäre nur richtig, wenn danach alles passt
+        if (len === edges.size) { const test = new Set(edges); test.add(k); if (isSolved(p, test)) continue; }
+        if (okCross([k])) return base({ kind: "loop", text: "Diese Kante würde den Weg zu einer Schleife schließen – aber der Rundweg ist damit noch nicht fertig.\nMarkieren Sie sie mit ×.", nodes: [g.nodeRC(a), g.nodeRC(b)], targetEdges: [k], ops: cross([k]) });
+      }
+    }
+  }
+  // 11) Rückfall: Lösungskante, bevorzugt am gezeichneten Weg
   const missing = p.solution.filter((k) => !edges.has(k));
   const pick = missing.find((k) => { const e = g.idx(k); return deg[g.edgeNodes[e * 2]] > 0 || deg[g.edgeNodes[e * 2 + 1]] > 0; }) || missing[0];
   if (!pick) return null;
   return base({ kind: "fallback", text: "Wer weiter vorausdenkt, sieht: Nur mit dieser Kante lässt sich die Schleife passend zu allen Zahlen schließen.\nZeichnen Sie die hervorgehobene Kante.", targetEdges: [pick], ops: add([pick]) });
+}
+
+/** true, wenn das Rätsel vom leeren Stand aus nur mit begründeten Tipps (nie „fallback“) lösbar ist. Tipps werden wie bei „Anzeigen“ angewandt. */
+export function logicSolvable(p) {
+  const edges = new Set(), crosses = new Set(), E = geo(p.n).E;
+  for (let step = 0; step <= E + 5; step++) {
+    const h = explainHint(p, edges, crosses);
+    if (!h) return true;
+    if (h.kind === "fallback" || h.kind === "wrong" || h.kind === "wrongcross") return false;
+    for (const { edge: k, to } of h.ops) { edges.delete(k); crosses.delete(k); if (to === "edge") edges.add(k); else if (to === "cross") crosses.add(k); }
+  }
+  return false;
 }

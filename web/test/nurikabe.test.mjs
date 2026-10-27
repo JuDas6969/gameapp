@@ -64,6 +64,8 @@ for (const diff of DIFFS) {
   }
   console.log(`${diff.padEnd(8)} ${String(SIZE[diff]).padStart(2)}×${SIZE[diff]}  ${times.map((t) => String(Math.round(t)).padStart(5)).join(" ")} ms`);
 }
+// LinkedIn-Stil: jedes Rätsel ist vom leeren Gitter aus ohne Rückfall-Tipp lösbar (10 Seeds je Stufe)
+for (const diff of DIFFS) for (let s = 1; s <= 10; s++) assert(nk.logicSolvable(nk.generate(diff, 1000 + s)), `${diff}/${1000 + s} logicSolvable`);
 assert(worst <= 1000, `Worst Case ${Math.round(worst)} ms > 1 s`);
 console.log(fails ? `\n${fails} FAILURES` : `\nall ok (worst ${Math.round(worst)} ms)`);
 process.exit(fails ? 1 : 0);

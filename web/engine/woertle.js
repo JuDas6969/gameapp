@@ -67,3 +67,42 @@ export function findHint(p, guesses = []) {
 }
 
 export const isVowel = (ch) => VOWELS.has(ch.toLowerCase());
+
+/**
+ * Begründeter Tipp für die Tipp-Erklärung (rein, kein DOM).
+ * guesses: bisherige Versuche, known: per Tipp bekannte Buchstaben (Array, "" = offen).
+ * → { pos, letter, options:[Buchstaben, die an pos noch möglich sind], yellow:bool, yellowAt:[Stellen mit Gelb], absent:[ausgeschlossene Buchstaben],
+ *     focus:[[versuch, stelle], …] } oder null.
+ */
+export function explainHint(p, guesses = [], known = []) {
+  const s = p.solution.toLowerCase(), L = s.length;
+  const gs = guesses.map((g) => g.toLowerCase());
+  const res = gs.map((g) => score(g, s));
+  const fixed = Array(L).fill(false);
+  res.forEach((r) => r.forEach((v, i) => { if (v === "ok") fixed[i] = true; }));
+  known.forEach((k, i) => { if (k) fixed[i] = true; });
+  const open = [];
+  for (let i = 0; i < L; i++) if (!fixed[i]) open.push(i);
+  if (!open.length) return null;
+  const present = new Set(), near = new Set(), absent = new Set();
+  gs.forEach((g, gi) => [...g].forEach((ch, i) => { if (res[gi][i] !== "miss") present.add(ch); if (res[gi][i] === "near") near.add(ch); }));
+  gs.forEach((g, gi) => [...g].forEach((ch, i) => { if (res[gi][i] === "miss" && !present.has(ch)) absent.add(ch); }));
+  // Kandidaten: Lösungswörter, die zu allen bisherigen Bewertungen und bekannten Buchstaben passen
+  const kn = known.map((k) => (k || "").toLowerCase());
+  const cands = pool(L).filter((w) => w.length === L && res.every((r, gi) => score(gs[gi], w).every((v, i) => v === r[i])) && kn.every((k, i) => !k || w[i] === k));
+  if (!cands.includes(s)) cands.push(s);
+  const options = (i) => [...new Set(cands.map((w) => w[i]))].sort((a, b) => a.localeCompare(b, "de"));
+  let pos;
+  if (!gs.length) pos = open.find((i) => VOWELS.has(s[i])) ?? open[0];
+  else {
+    const yel = open.filter((i) => near.has(s[i]));
+    const pool2 = yel.length ? yel : open;
+    pos = pool2.reduce((a, b) => (options(b).length < options(a).length ? b : a));
+  }
+  const letter = s[pos];
+  const yellowAt = [];
+  gs.forEach((g, gi) => [...g].forEach((ch, i) => { if (ch === letter && res[gi][i] === "near" && !yellowAt.includes(i)) yellowAt.push(i); }));
+  const focus = [];
+  gs.forEach((g, gi) => { focus.push([gi, pos]); [...g].forEach((ch, i) => { if (ch === letter && i !== pos) focus.push([gi, i]); }); });
+  return { pos, letter, options: options(pos), yellow: near.has(letter), yellowAt: yellowAt.sort((a, b) => a - b), absent: [...absent], focus };
+}

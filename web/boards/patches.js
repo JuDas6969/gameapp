@@ -75,10 +75,25 @@ export function Patches(p, { onSolved, tools, haptic }) {
 
   // drag state; preview = {rect|null, snapped, raw} from the engine (rect = what would be placed on release)
   let anchor = null, anchorKey = null, picked = null, preview = null, t0 = 0;
-  const span = (cell) => patches.snapDrag(p, rects, anchorKey, cell);
+  // what you drag is what you get (no snapping): raw box clue ↔ finger; green when it already fits
+  const span = (cell) => {
+    const [cr, cc] = keyCell(anchorKey), [fr, fc] = cell;
+    const raw = { r: Math.min(cr, fr), c: Math.min(cc, fc), w: Math.abs(cc - fc) + 1, h: Math.abs(cr - fr) + 1 };
+    return { rect: fits(raw) ? raw : null, snapped: false, raw };
+  };
 
   const draw = () => {
-    rectLayer.replaceChildren(...rects.map((rc) => svgEl("rect", { ...rectAttrs(rc), rx: 10, fill: colorOf(rc), stroke: "var(--line-strong)", "stroke-width": 5 })));
+    rectLayer.replaceChildren(...rects.flatMap((rc) => {
+      if (patches.isValid(p, rc)) return [svgEl("rect", { ...rectAttrs(rc), rx: 10, fill: colorOf(rc), stroke: "var(--line-strong)", "stroke-width": 5 })];
+      // unfinished / wrong patch: dashed, with "have / need" badge
+      const k = clueIn(rc), need = k != null ? p.clues[k] : 0, have = rc.w * rc.h;
+      const out = [svgEl("rect", { ...rectAttrs(rc), rx: 10, fill: colorOf(rc), opacity: .55, stroke: "var(--bad)", "stroke-width": 5, "stroke-dasharray": "14 10" })];
+      const label = need ? `${have} / ${need}` : String(have), w = 26 + 15 * label.length;
+      const g = svgEl("g", { transform: `translate(${(rc.c + rc.w) * S - w - 9},${(rc.r + rc.h) * S - 43})` });
+      g.append(svgEl("rect", { x: 0, y: 0, width: w, height: 34, rx: 17, fill: "var(--card)", stroke: "var(--bad)", "stroke-width": 2 }));
+      g.append(svgEl("text", { x: w / 2, y: 18, "text-anchor": "middle", "dominant-baseline": "central", "font-size": 22, "font-weight": 800, fill: "var(--bad)" }, label));
+      out.push(g); return out;
+    }));
     const covered = new Set(); rects.forEach((rc) => { for (let r = rc.r; r < rc.r + rc.h; r++) for (let c = rc.c; c < rc.c + rc.w; c++) covered.add(r * 64 + c); });
     for (const [k, { box, dashed }] of clueEls) if (dashed) box.setAttribute("fill", covered.has(k) || (preview && k === anchorKey) ? "none" : "var(--card)");
     if (preview) {
@@ -91,7 +106,7 @@ export function Patches(p, { onSolved, tools, haptic }) {
       lblG.setAttribute("transform", `translate(${shown.c * S + 9},${shown.r * S + 9})`); lblG.setAttribute("visibility", "visible");
     } else { prevEl.setAttribute("visibility", "hidden"); lblG.setAttribute("visibility", "hidden"); }
     clear.disabled = !rects.length;
-    setMsg(rects.length ? `${rects.length} von ${total} Flicken` : `Von einem Hinweis aus ein Rechteck ziehen · 0 von ${total}`);
+    setMsg(rects.length ? `${rects.filter((x) => patches.isValid(p, x)).length} von ${total} Flicken` : `Von einem Hinweis aus ein Rechteck ziehen · 0 von ${total}`);
   };
 
   // --- transient effects ---
@@ -135,7 +150,7 @@ export function Patches(p, { onSolved, tools, haptic }) {
     onMove: (cell) => { if (!anchor) return; preview = span(cell); draw(); },
     onEnd: (moved) => {
       if (!anchor) return;
-      const rc = preview?.rect, key = anchorKey, old = picked, dt = performance.now() - t0, b0 = before || snap();
+      const preview0 = preview, rc = preview?.rect, key = anchorKey, old = picked, dt = performance.now() - t0, b0 = before || snap();
       preview = null; anchor = null; picked = null; anchorKey = null; before = null;
       const tap = !moved && dt < 250;
       const place = (x) => { rects.push(x); commit(b0); haptic(); draw(); if (patches.isSolved(p, rects)) onSolved(); };
@@ -147,7 +162,14 @@ export function Patches(p, { onSolved, tools, haptic }) {
         return;
       }
       if (rc && fits(rc)) { place(rc); return; }
-      // invalid: put a picked-up rect back, shake the clue
+      // like LinkedIn: any rectangle drawn from a clue may be placed – even with the wrong size/shape –
+      // as long as it contains no other clue. Overlapped patches are replaced. Wrong ones are shown dashed with "3 / 5".
+      const raw = preview0?.raw;
+      if (raw && clueKeys.every((k) => k === key || !patches.contains(raw, Math.floor(k / 64), k % 64))) {
+        rects = rects.filter((x) => !patches.overlaps(x, raw));
+        place({ ...raw }); return;
+      }
+      // contains a second clue: put a picked-up rect back, shake the clue
       if (old) rects.push(old);
       draw(); shakeClue(key); haptic(20);
     },

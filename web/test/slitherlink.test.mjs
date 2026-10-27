@@ -41,5 +41,8 @@ for (const diff of DIFFS) {
   assert(max < 1000, `${diff} generation under 1 s (max ${max.toFixed(0)} ms)`);
 }
 
+// LinkedIn-Stil: jedes Rätsel ist vom leeren Stand aus ohne Rückfall-Tipp lösbar (10 Seeds je Stufe)
+for (const diff of DIFFS) for (let s = 1; s <= 10; s++) assert(sl.logicSolvable(sl.generate(diff, 500 + s)), `slitherlink ${diff} seed ${500 + s} logicSolvable`);
+
 console.log(fails ? `\n${fails} FAILURES` : "\nall ok");
 process.exit(fails ? 1 : 0);

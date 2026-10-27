@@ -174,3 +174,16 @@ export function explainHint(p, g) {
     return { kind: "fallback", line: null, cells: [[r, c, 2]], text: "Das Bild ist vollständig – dieses Feld bleibt leer.\nMarkieren Sie es mit ×." };
   return null;
 }
+
+/** true, wenn das Rätsel vom leeren Gitter aus nur mit begründeten Tipps (nie „fallback“) lösbar ist. Tipps werden wie bei „Anzeigen“ angewandt.
+ *  Da generate() nur zeilenlogisch lösbare Bilder akzeptiert, gilt das für jedes erzeugte Rätsel. */
+export function logicSolvable(p) {
+  const g = Array.from({ length: p.n }, () => Array(p.n).fill(0));
+  for (let step = 0; step < 2 * p.n * p.n + 5; step++) {
+    const h = explainHint(p, g);
+    if (!h) return true;
+    if (h.kind === "fallback" || h.wrong) return false;
+    for (const [r, c, v] of h.cells) g[r][c] = v;
+  }
+  return false;
+}

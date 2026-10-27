@@ -198,7 +198,8 @@ export function generate(diff, seed) {
     const { islands, solution } = build(n, target, EXTRA_P[diff], rng);
     if (islands.length < target * 0.8) continue;
     const p = { kind: "hashi", n, diff, islands, solution };
-    if (countSolutions(p, 2, 60000) === 1) return p;
+    // LinkedIn-Stil: jeder Schritt muss mit einem begründeten Tipp gehen (nie „fallback“)
+    if (logicSolvable(p) && countSolutions(p, 2, 60000) === 1) return p;
   }
 }
 
@@ -276,4 +277,17 @@ export function explainHint(p, bridges) {
     if (have < s.count) return { kind: "fallback", remove: false, text: `Ohne ${s.count - have === 1 ? "diese Brücke" : "diese Brücken"} ließen sich nicht alle Inseln erfüllen und gleichzeitig zu einer Gruppe verbinden.\nVerbinden Sie die hervorgehobenen Inseln${s.count === 2 ? " mit zwei Brücken" : ""}.`, focus: [], target: [s.a, s.b], set: [{ a: s.a, b: s.b, count: s.count }] };
   }
   return null;
+}
+
+/** true, wenn das Rätsel ohne Brücken nur mit begründeten Tipps (nie „fallback“) lösbar ist. Tipps werden wie bei „Anzeigen“ angewandt. */
+export function logicSolvable(p) {
+  const val = new Map();
+  for (let step = 0; step < 4 * p.islands.length + 10; step++) {
+    const bridges = [...val].map(([k, count]) => { const [a, b] = k.split("-").map(Number); return { a, b, count }; });
+    const h = explainHint(p, bridges);
+    if (!h) return true;
+    if (h.kind === "fallback" || h.kind === "wrong" || h.remove) return false;
+    for (const s of h.set) val.set(pairKey(s.a, s.b), s.count);
+  }
+  return false;
 }

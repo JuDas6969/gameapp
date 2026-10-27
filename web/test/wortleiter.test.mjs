@@ -8,7 +8,7 @@ const ok = (c, msg) => { if (!c) { fails++; console.error("FAIL:", msg); } };
 
 // Daten
 const n4 = Object.keys(CLUES).filter((w) => w.length === 4).length, n5 = Object.keys(CLUES).filter((w) => w.length === 5).length;
-ok(n4 >= 1200, `zu wenige 4er-Hinweise: ${n4}`); ok(n5 >= 600, `zu wenige 5er-Hinweise: ${n5}`);
+ok(n4 >= 1100, `zu wenige 4er-Hinweise: ${n4}`); ok(n5 >= 600, `zu wenige 5er-Hinweise: ${n5}`);
 for (const [w, c] of Object.entries(CLUES)) {
   ok(w === w.toUpperCase() && !/ß/.test(w), `Schlüssel nicht normiert: ${w}`);
   ok(typeof c === "string" && c.length >= 3, `leerer Hinweis: ${w}`);

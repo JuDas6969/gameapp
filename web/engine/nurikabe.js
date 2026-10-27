@@ -185,7 +185,13 @@ export function generate(diff, seed) {
       if (res.count === 1) {
         const solution = grid(n, 1);
         for (let i = 0; i < N; i++) if (!water[i]) solution[Math.floor(i / n)][i % n] = 0;
-        return { kind: "nurikabe", n, diff, clues, solution };
+        const p = { kind: "nurikabe", n, diff, clues, solution };
+        if (logicSolvable(p)) return p;
+        // eindeutig, aber nicht ohne Rückfall-Tipp lösbar: Zahl einer Insel versetzen und erneut prüfen
+        const big = members.map((m, id) => id).filter((id) => members[id].length > 1);
+        if (!big.length) break;
+        const id = rng.pick(big); clueCell.delete(pos[id]); clueCell.add(rng.pick(members[id].filter((c) => c !== pos[id])));
+        continue;
       }
       if (res.count !== 2) break;
       // Alternativlösung und Inseln, deren Zellmenge abweicht
@@ -218,6 +224,88 @@ export function generate(diff, seed) {
       if (!changed) break;
     }
   }
+}
+
+/** Alle erlaubten Vervollständigungen je Zahlen-Insel (für Tipps). → [{ i, shapes: number[][] }] oder null (zu viele Formen).
+ *  Erlaubt = zusammenhängend, enthält die bisherigen Inselfelder, kein Wasser, berührt keine fremde Insel,
+ *  erzwingt keinen 2×2-Wasserblock (Felder, die keine andere Insel erreichen kann, zählen als Wasser) und schneidet kein Wasser ab. */
+function shapeOptions(p, g, isls, compOf, LIMIT = 3000) {
+  const n = p.n, N = n * n, NB = buildNeigh(n), BLOCKS = buildBlocks(n);
+  const isl2 = new Uint8Array(N), water = new Uint8Array(N), comp = new Int16Array(N).fill(-1);
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) { const x = r * n + c; if (g[r][c] === 1) water[x] = 1; else if (g[r][c] === 2 || p.clues[r][c]) isl2[x] = 1; comp[x] = compOf[r][c]; }
+  const clued = (j) => j >= 0 && isls[j].clues.length === 1;
+  const per = [];
+  for (let i = 0; i < isls.length; i++) {
+    if (isls[i].clues.length >= 2) return null;
+    if (!clued(i)) continue;
+    const isl = isls[i], k = isl.clues[0];
+    if (isl.cells.length > k) return null;
+    const ok = (x) => !water[x] && !(comp[x] >= 0 && comp[x] !== i && clued(comp[x])) && !NB[x].some((y) => comp[y] >= 0 && comp[y] !== i && clued(comp[y]));
+    let level = [isl.cells.map(([r, c]) => r * n + c).sort((a, b) => a - b)];
+    for (let s = level[0].length; s < k && level.length; s++) {
+      const seen = new Set(), next = [];
+      for (const sh of level) {
+        for (const x of sh) for (const nb of NB[x]) {
+          if (sh.includes(nb) || !ok(nb)) continue;
+          const ns = [...sh, nb].sort((a, b) => a - b), k2 = ns.join(",");
+          if (seen.has(k2)) continue; seen.add(k2); next.push(ns);
+        }
+      }
+      if (next.length > LIMIT) return null;
+      level = next;
+    }
+    per.push({ i, shapes: level.filter((sh) => sh.every((x) => NB[x].every((y) => sh.includes(y) || !isl2[y]))) });
+  }
+  // Filter mit Abdeckung durch andere Inseln (zweimal, damit sich Einschränkungen fortpflanzen)
+  const inSh = new Int32Array(N), bord = new Int32Array(N), seenB = new Int32Array(N); let stamp = 0;
+  const wTotal = water.reduce((a, v) => a + v, 0);
+  // Inselfelder ohne Zahl müssen zu einer Zahlen-Insel gehören: kann nur eine Insel sie erreichen, muss jede ihrer Formen sie enthalten
+  const orphans = isls.map((isl, j) => (isl.clues.length ? null : isl.cells[0][0] * n + isl.cells[0][1])).filter((x) => x !== null);
+  const needOrphans = () => {
+    for (const x of orphans) {
+      const who = per.filter((e) => e.shapes.some((sh) => sh.includes(x)));
+      if (who.length === 1) who[0].shapes = who[0].shapes.filter((sh) => sh.includes(x));
+    }
+  };
+  needOrphans();
+  for (let pass = 0; pass < 2; pass++) {
+    const cover = new Int16Array(N);
+    const mine = per.map((e) => { const m = new Uint8Array(N); for (const sh of e.shapes) for (const x of sh) m[x] = 1; for (let x = 0; x < N; x++) cover[x] += m[x]; return m; });
+    per.forEach((e, ei) => {
+      const m = mine[ei];
+      e.shapes = e.shapes.filter((sh) => {
+        stamp++;
+        for (const x of sh) inSh[x] = stamp;
+        for (const x of sh) for (const y of NB[x]) if (inSh[y] !== stamp) bord[y] = stamp;
+        // Feld wird sicher Wasser: Wasser, Rand der Form oder von keiner anderen Insel erreichbar
+        const wet = (x) => inSh[x] !== stamp && (water[x] || bord[x] === stamp || (!isl2[x] && cover[x] - m[x] <= 0));
+        for (const x of sh) for (const y of NB[x]) if (bord[y] === stamp)
+          for (const b of BLOCKS) if (b.includes(y) && wet(b[0]) && wet(b[1]) && wet(b[2]) && wet(b[3])) return false;
+        // Wasser darf nicht abgeschnitten werden: alles Wasser über Nicht-Insel-Felder verbunden
+        if (wTotal > 1) {
+          let s0 = -1; for (let x = 0; x < N; x++) if (water[x]) { s0 = x; break; }
+          stamp++; const mark = stamp; const st = [s0]; seenB[s0] = mark; let got = 1;
+          while (st.length) { const x = st.pop(); for (const y of NB[x]) if (seenB[y] !== mark && inSh[y] !== mark - 1 && !isl2[y]) { seenB[y] = mark; if (water[y]) got++; st.push(y); } }
+          if (got < wTotal) return false;
+        }
+        return true;
+      });
+    });
+    needOrphans();
+  }
+  return per;
+}
+
+/** true, wenn das Rätsel vom leeren Gitter aus nur mit begründeten Tipps (nie „fallback“) lösbar ist. Tipps werden wie bei „Anzeigen“ angewandt. */
+export function logicSolvable(p) {
+  const g = grid(p.n, 0);
+  for (let step = 0; step < p.n * p.n + 5; step++) {
+    const h = explainHint(p, g);
+    if (!h) return true;
+    if (h.kind === "fallback" || h.kind === "wrong") return false;
+    for (const [r, c, v] of h.set) g[r][c] = v;
+  }
+  return false;
 }
 
 // ---------- Spielzustand ----------
@@ -406,7 +494,45 @@ export function explainHint(p, g) {
       if (exits.length === 1 && ok(exits, 1)) return mk("exit", "Alles Wasser muss zusammenhängen – dieses Wasser hat nur noch einen Ausweg.\nDas hervorgehobene Feld muss Wasser sein.", comp, exits, 1);
     }
   }
-  // 8) Rückfall: Lösungsfeld (erst Wasser, dann Insel)
+  // 8) Formen-Analyse: alle erlaubten Möglichkeiten, jede Zahlen-Insel zu vervollständigen
+  //    (Form berührt keine fremde Insel, lässt keinen 2×2-Wasserblock zwingend entstehen und schneidet kein Wasser ab)
+  {
+    const N = n * n, per = shapeOptions(p, g, isls, compOf);
+    if (per) {
+      for (const e of per) {
+        const isl = isls[e.i], k = isl.clues[0]; if (isl.cells.length >= k || !e.shapes.length) continue;
+        const cnt = new Map(), bcnt = new Map();
+        for (const sh of e.shapes) {
+          const inSh = new Set(sh), bord = new Set();
+          for (const x of sh) { cnt.set(x, (cnt.get(x) || 0) + 1); for (const [y, z] of nbs(Math.floor(x / n), x % n)) if (!inSh.has(y * n + z)) bord.add(y * n + z); }
+          for (const x of bord) bcnt.set(x, (bcnt.get(x) || 0) + 1);
+        }
+        const S = e.shapes.length, rem = k - isl.cells.length;
+        const must = [...cnt].filter(([x, v]) => v === S && free(Math.floor(x / n), x % n)).map(([x]) => [Math.floor(x / n), x % n]);
+        if (must.length && ok(must, 2)) {
+          const one = must.length === 1;
+          const orph = [...cnt].filter(([x, v]) => v === S && g[Math.floor(x / n)][x % n] === 2 && compOf[Math.floor(x / n)][x % n] !== e.i).map(([x]) => [Math.floor(x / n), x % n]);
+          if (orph.length)
+            return mk("shape", `Das Inselfeld ohne Zahl muss zu einer Zahlen-Insel gehören – nur diese ${k}er-Insel kann es erreichen.\n${one ? "Das hervorgehobene Feld muss" : "Die hervorgehobenen Felder müssen"} Insel sein.`, [...isl.cells, ...orph], must, 2);
+          return mk("shape", `Diese ${k}er-Insel braucht noch ${felder(rem)}. Jede Form, die keinen 2×2-Wasserblock erzwingt und kein Wasser abschneidet, nutzt ${one ? "das hervorgehobene Feld" : "die hervorgehobenen Felder"}.\n${one ? "Es muss" : "Sie müssen"} Insel sein.`, isl.cells, must, 2);
+        }
+        const edge = [...bcnt].filter(([x, v]) => v === S && !cnt.has(x) && free(Math.floor(x / n), x % n)).map(([x]) => [Math.floor(x / n), x % n]);
+        if (edge.length && ok(edge, 1)) {
+          const one = edge.length === 1;
+          return mk("shapeEdge", `Egal, wie diese ${k}er-Insel fertig wird – ${one ? "das hervorgehobene Feld grenzt" : "die hervorgehobenen Felder grenzen"} immer an sie, ohne dazuzugehören.\n${one ? "Es muss" : "Sie müssen"} Wasser sein.`, isl.cells, edge, 1);
+        }
+      }
+      const all = new Uint8Array(N);
+      for (const e of per) for (const sh of e.shapes) for (const x of sh) all[x] = 1;
+      const t = [];
+      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (free(r, c) && !all[r * n + c]) t.push([r, c]);
+      if (t.length && ok(t, 1)) {
+        const one = t.length === 1;
+        return mk("reach", `Keine Insel kann ${one ? "dieses Feld" : "diese Felder"} erreichen, ohne zu groß zu werden, eine andere Insel zu berühren oder einen 2×2-Wasserblock zu erzwingen.\n${one ? "Es muss" : "Sie müssen"} Wasser sein.`, [], t, 1);
+      }
+    }
+  }
+  // 9) Rückfall: Lösungsfeld (erst Wasser, dann Insel)
   for (const want of [1, 0]) for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
     if (free(r, c) && p.solution[r][c] === want)
       return mk("fallback", want === 1 ? "Nur so bleibt alles Wasser zusammenhängend und jede Insel bekommt genau ihre Größe – das Rätsel hat nur diese Lösung.\nDas hervorgehobene Feld muss Wasser sein."

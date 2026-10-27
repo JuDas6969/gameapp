@@ -5,7 +5,7 @@ import * as kw from "../engine/kreuzwort.js";
 
 const SETTINGS_KEY = "raetsel.kreuzwort.settings";
 const DEFAULTS = { autoCheck: false };
-const HINT_WINDOW = 20000;
+const ORD = ["1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.", "10.", "11."];
 const DIR_WORD = { across: "waagrecht", down: "senkrecht" };
 const loadSettings = () => { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") }; } catch { return { ...DEFAULTS }; } };
 const saveSettings = (s) => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* privat/blocked */ } };
@@ -15,7 +15,7 @@ export function Kreuzwort(p, { onSolved, tools, haptic }) {
   const b = base(n);
   const settings = loadSettings();
   let sel = null, dir = "across", solved = false, mistakes = 0;
-  let pending = null, hintHl = null, hintTimer = null;
+  let hintTimer = null;
   const undoStack = [];
   const rects = [], letters = [];
   const key = (r, c) => r * 64 + c;
@@ -27,7 +27,7 @@ export function Kreuzwort(p, { onSolved, tools, haptic }) {
 
   const snapshot = () => g.map((row) => row.slice());
   const push = () => { undoStack.push(snapshot()); if (undoStack.length > 300) undoStack.shift(); };
-  const dropHint = () => { pending = null; hintHl = null; clearTimeout(hintTimer); rects.forEach((x) => x.classList.remove("hintcell")); };
+  const dropHint = () => { clearTimeout(hintTimer); rects.forEach((x) => x.classList.remove("hintcell")); };
 
   // ---- Gitter ---- (schwarze Felder in beiden Farbschemata dunkel, weiße Felder als Karte)
   const darkMq = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null;
@@ -117,8 +117,7 @@ export function Kreuzwort(p, { onSolved, tools, haptic }) {
       if (p.black[r][c]) { rects[r * n + c].setAttribute("fill", col.black); continue; }
       const i = r * n + c;
       let fill = col.white;
-      if (hintHl && hintHl.r === r && hintHl.c === c) fill = "var(--accent-soft)";
-      else if (inSlot(cur, r, c) && !solved) fill = darkMq?.matches ? "#4d4941" : "#e9e4da";
+      if (inSlot(cur, r, c) && !solved) fill = darkMq?.matches ? "#4d4941" : "#e9e4da";
       rects[i].setAttribute("fill", fill);
       const t = letters[i]; t.textContent = g[r][c];
       t.setAttribute("class", `cell-txt entry${bad && bad.has(key(r, c)) ? " bad" : ""}`);
@@ -155,29 +154,35 @@ export function Kreuzwort(p, { onSolved, tools, haptic }) {
     const step = kw.findHint(p, g);
     if (!step) return null;
     const { r, c, letter, slot } = step;
-    const where = `${slot.num} ${DIR_WORD[slot.dir]}`;
-    const same = pending && pending.r === r && pending.c === c && Date.now() - pending.at < HINT_WINDOW;
-    if (!same) {
-      dropHint();
-      hintHl = { r, c }; sel = { r, c }; dir = slot.dir;
-      pending = { r, c, at: Date.now() };
-      hintTimer = setTimeout(() => { if (hintHl && hintHl.r === r && hintHl.c === c) { hintHl = null; pending = null; draw(); } }, HINT_WINDOW);
-      draw();
-      return step.wrong
-        ? `Zeile ${r + 1}, Spalte ${c + 1}: das ${g[r][c]} stimmt hier nicht. Noch ein Tipp korrigiert es.`
-        : `Der Buchstabe gehört zu ${where}: „${slot.clue}“. Noch ein Tipp trägt ihn ein.`;
+    const name = (sl) => `„${sl.clue}“ (${sl.num} ${DIR_WORD[sl.dir]})`;
+    const A = kw.slotAt(p, r, c, "across"), D = kw.slotAt(p, r, c, "down");
+    const focus = [...(A ? cellsOf(A) : []), ...(D ? cellsOf(D) : [])];
+    dropHint(); sel = { r, c }; dir = slot.dir; draw();
+    if (step.wrong) {
+      return {
+        text: `Dieser Buchstabe passt nicht zu ${name(slot)}.\nEntfernen Sie ihn.`,
+        focus: cellsOf(slot), strike: [[r, c]],
+        apply: () => { push(); g[r][c] = ""; sel = { r, c }; dir = slot.dir; draw(); return undefined; },
+      };
     }
-    const old = g[r][c];
-    dropHint(); push();
-    g[r][c] = letter; sel = { r, c }; dir = slot.dir;
-    draw();
-    const rc = rects[r * n + c]; rc.classList.add("hintcell");
-    hintTimer = setTimeout(() => { rc.classList.remove("hintcell"); draw(); }, 1200);
-    checkSolved();
-    return step.wrong ? `Das ${old} war falsch – richtig ist ${letter} (${where}).` : `${where}: hier steht ${letter}.`;
+    const why = A && D ? `${name(A)} und ${name(D)} kreuzen sich hier.`
+      : `Das Wort zu ${name(slot)} hat ${slot.len} Buchstaben – dies ist der ${ORD[slot.dir === "across" ? c - slot.c : r - slot.r]}.`;
+    return {
+      text: `${why}\nDer Buchstabe ist ${letter}.`,
+      focus, target: [[r, c]],
+      apply: () => {
+        dropHint(); push();
+        g[r][c] = letter; sel = { r, c }; dir = slot.dir;
+        move(1); draw();
+        const rc = rects[r * n + c]; rc.classList.add("hintcell");
+        hintTimer = setTimeout(() => { rc.classList.remove("hintcell"); draw(); }, 1200);
+        checkSolved();
+        return undefined;
+      },
+    };
   };
 
   const destroy = () => { kb.destroy(); window.removeEventListener("keydown", onKey); darkMq?.removeEventListener?.("change", draw); clearTimeout(hintTimer); };
   gotoSlot(p.slots[0]);
-  return { ...b, hint, undo, canUndo, clear, metrics, destroy };
+  return { ...b, compact: true, instantHints: true, hint, undo, canUndo, clear, metrics, destroy };
 }

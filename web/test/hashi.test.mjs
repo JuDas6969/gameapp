@@ -38,5 +38,8 @@ for (const diff of DIFFS) {
   assert(Math.max(...times) <= 1000, `${diff} worst case ≤ 1 s`);
 }
 
+// LinkedIn-Stil: jedes Rätsel ist ohne Rückfall-Tipp lösbar (10 Seeds je Stufe)
+for (const diff of DIFFS) for (let s = 1; s <= 10; s++) assert(hashi.logicSolvable(hashi.generate(diff, 900 + s)), `${diff} seed ${900 + s} logicSolvable`);
+
 console.log(fails ? `\n${fails} FAILURES` : "\nall ok");
 process.exit(fails ? 1 : 0);
