@@ -10,9 +10,10 @@ import * as nurikabe from "./nurikabe.js";
 import * as kakuro from "./kakuro.js";
 import * as woertle from "./woertle.js";
 import * as wortpfad from "./wortpfad.js";
+import * as treffpunkt from "./treffpunkt.js";
 export * from "./core.js";
 
-export const ENGINES = { sudoku, queens, tango, zip, patches, nonogram, hashi, slitherlink, nurikabe, kakuro, woertle, wortpfad };
+export const ENGINES = { sudoku, queens, tango, zip, patches, nonogram, hashi, slitherlink, nurikabe, kakuro, woertle, wortpfad, treffpunkt };
 
 export function generate(kind, diff, seed) {
   return ENGINES[kind].generate(diff, seed);

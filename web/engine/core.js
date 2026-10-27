@@ -48,6 +48,8 @@ ${UNIQUE}` },
     rules: "Errate das gesuchte deutsche Wort in höchstens 6 Versuchen. Jeder Versuch muss ein gültiges Wort gleicher Länge sein (⏎ schickt ab).\nGrün: Buchstabe stimmt und steht richtig. Gelb: kommt vor, steht aber woanders. Grau: kommt nicht vor.\nLeicht 4, Mittel 5, Schwer 6, Experte 7 Buchstaben. Umlaute sind eigene Buchstaben, kein ß." },
   wortpfad: { title: "Wortpfad", icon: "≈", subtitle: "Ziehe Wörter durch das Buchstabengitter – jedes Feld einmal",
     rules: "Verbinde benachbarte Buchstaben (auch diagonal) zu Wörtern, indem du einen Pfad durch das Gitter ziehst. Jedes Feld gehört am Ende zu genau einem Wort; die Zeile unten verrät Anzahl und Längen der Wörter.\nEin gültiges Wort bleibt farbig stehen, Tippen auf einen Pfad entfernt ihn. Jede Zerlegung aus gültigen Wörtern zählt." },
+  treffpunkt: { title: "Treffpunkt", icon: "◎", subtitle: "Fünf Wörter, eine Kategorie – je früher, desto besser",
+    rules: "Fünf Wörter haben etwas gemeinsam. Das erste siehst du sofort – rate die Kategorie!\nJeder Fehlversuch deckt das nächste Wort auf. Du hast fünf Versuche; je weniger Wörter du brauchst, desto besser.\nSchreibweise ist egal, Alternativen und kleine Tippfehler werden erkannt." },
 };
 export const GAME_KEYS = Object.keys(GAMES);
 
