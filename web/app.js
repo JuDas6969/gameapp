@@ -152,6 +152,7 @@ async function Game(kind, session) {
     hintBtn.disabled = solved || !board?.hint || left > 0;
     hintFill.style.width = left > 0 ? `${100 * (1 - left / HINT_COOLDOWN)}%` : "0%";
     hintBtn.classList.toggle("cooling", left > 0);
+    tickActs();
   };
   const hintText = h("div", { class: "hint-text" });
   const hintGo = h("button", { class: "pill small", onclick: () => applyHint() }, "Anzeigen");
@@ -184,6 +185,28 @@ async function Game(kind, session) {
     haptic(); updateUndo();
     if (after) showPanel(after, false); else hintPanel.hidden = true;
   }
+  // boards may replace "Widerrufen" with their own actions: board.actions = [{ label, cooldown, run: () => text }]
+  const actionsRow = h("div", { class: "actions" }, undoBtn, hintBtn);
+  let customActs = [];
+  const mountActions = () => {
+    customActs = (board?.actions || []).map((a) => {
+      const fill = h("span", { class: "fill" });
+      const btn = h("button", { class: "pill hint" }, fill, h("span", { class: "lbl" }, a.label));
+      const st = { a, btn, fill, until: 0 };
+      btn.addEventListener("click", () => {
+        if (solved || Date.now() < st.until) return;
+        closeHint();
+        const res = a.run();
+        if (!res) return;
+        hints++; haptic(); st.until = Date.now() + (a.cooldown || HINT_COOLDOWN); updateUndo();
+        if (typeof res === "string") showPanel(res, false);
+        else { board.spotlight?.(res); if (res.apply) { pendingHint = res; showPanel(res.text, true); } else showPanel(res.text, false); }
+      });
+      return st;
+    });
+    actionsRow.replaceChildren(...(customActs.length ? customActs.map((x) => x.btn) : [undoBtn]), hintBtn);
+  };
+  const tickActs = () => { for (const st of customActs) { const left = st.until - Date.now(); st.btn.disabled = solved || left > 0; st.fill.style.width = left > 0 ? `${100 * (1 - left / (st.a.cooldown || HINT_COOLDOWN))}%` : "0%"; st.btn.classList.toggle("cooling", left > 0); } };
   const resetBtn = h("button", { class: "pill small ghost", onclick: () => { if (solved || !board?.clear) return; closeHint(); if (board.clear()) haptic(); } }, "Zurücksetzen");
   const metaL = h("span", {}, isDaily ? `Tagesrätsel #${dailyNumber()}` : DIFF_TITLE[session.diff]);
   const wrap = h("div", { class: "board-wrap" }, h("div", { class: "spin" }));
@@ -197,7 +220,7 @@ async function Game(kind, session) {
       isDaily ? h("span", { style: "width:40px" }) : h("button", { "aria-label": "Neues Rätsel", onclick: () => load() }, "↻")),
     h("div", { class: "meta" }, h("div", {}, metaL, h("span", { class: "dot" }, " · "), timeEl), resetBtn),
     wrap, tools,
-    h("div", { class: "actions" }, undoBtn, hintBtn),
+    actionsRow,
     hintPanel, rules);
   // close the hint panel as soon as the player touches the board themselves
   wrap.addEventListener("pointerdown", () => { if (!hintPanel.hidden && !pendingHint) closeHint(); else if (pendingHint) { closeHint(); } }, true);
@@ -249,6 +272,7 @@ async function Game(kind, session) {
     metaL.textContent = isDaily ? `Tagesrätsel #${dailyNumber()} · ${DIFF_TITLE[puzzle.diff]}` : DIFF_TITLE[puzzle.diff];
     board = BOARDS[kind](puzzle, { onSolved, tools, haptic });
     wrap.replaceChildren(board.el);
+    mountActions();
     fit();
     if (!document.hidden) resume();
     tick = setInterval(() => { if (!solved) timeEl.textContent = clock(seconds()); updateUndo(); }, 300);
