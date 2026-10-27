@@ -68,20 +68,16 @@ export function Nurikabe(p, { onSolved, tools, haptic }) {
     },
     onEnd: () => { if (undoStack.length && same(undoStack[undoStack.length - 1])) undoStack.pop(); checkSolved(); },
   });
-  // ---- Tipp: zweistufig – 1. Aufruf hebt hervor + erklärt, 2. Aufruf (innerhalb 20 s, gleicher Tipp) führt aus ----
-  let pending = null; const HINT_MS = 20000;
+  // ---- Tipp (LinkedIn-Stil): Begründung + Spotlight; „Anzeigen“ führt aus (undo-fähig) ----
   const hint = () => {
-    const hnt = nurikabe.findHint(p, g);
-    if (!hnt) { pending = null; return null; }
-    const key = `${hnt.r},${hnt.c}:${hnt.v}`, now = performance.now(), fixing = g[hnt.r][hnt.c] !== 0;
-    if (pending && pending.key === key && now - pending.t < HINT_MS) {
-      pending.rects.forEach((x) => x.remove()); pending = null;
-      pushUndo(); g[hnt.r][hnt.c] = hnt.v; draw(); flash([[hnt.r, hnt.c]]); checkSolved();
-      return hnt.v === 1 ? "Wasser gesetzt" : "Insel gesetzt";
-    }
-    if (pending) pending.rects.forEach((x) => x.remove());
-    pending = { key, t: now, rects: flash([[hnt.r, hnt.c]], HINT_MS, fixing ? "var(--bad)" : "var(--ok)") };
-    return hnt.reason + " – nochmal tippen zum Ausführen";
+    const hnt = nurikabe.explainHint(p, g); if (!hnt) return null;
+    const apply = () => {
+      pushUndo(); for (const [r, c, v] of hnt.set) g[r][c] = v;
+      draw(); if (hnt.kind !== "wrong") flash(hnt.set.map(([r, c]) => [r, c])); checkSolved();
+      const k = hnt.set.length, f = k === 1 ? "1 Feld" : `${k} Felder`;
+      return hnt.kind === "wrong" ? `${f} geleert.` : hnt.set[0][2] === 1 ? `${f} als Wasser gesetzt.` : `${f} als Insel markiert.`;
+    };
+    return { text: hnt.text, focus: hnt.focus, target: hnt.target, strike: hnt.strike, apply };
   };
   draw();
   return { ...b, hint, undo, canUndo, clear, metrics };

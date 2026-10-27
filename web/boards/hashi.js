@@ -103,31 +103,55 @@ export function Hashi(p, { onSolved, tools, haptic }) {
   });
 
   const flash = (node, ms) => { fx.append(node); setTimeout(() => node.remove(), ms); return node; };
-  // Zweistufiger Tipp: 1. Aufruf hebt die Kante hervor + erklärt, 2. Aufruf (innerhalb 20 s, gleicher Tipp) führt aus.
-  let pending = null; const HINT_MS = 20000;
-  const hintLine = (hnt, removing, width, ms) => {
-    const [x1, y1] = mid(p.islands[hnt.a].r, p.islands[hnt.a].c), [x2, y2] = mid(p.islands[hnt.b].r, p.islands[hnt.b].c);
-    return flash(svgEl("line", { x1, y1, x2, y2, stroke: removing ? "var(--bad)" : "var(--ok)", "stroke-width": width, "stroke-linecap": "round", opacity: .5 }), ms);
-  };
-  b.hint = () => {
-    const hnt = hashi.findHint(p, bridges());
-    if (!hnt) { pending = null; return null; }
-    const i = byPair.get(pk(hnt.a, hnt.b)); if (i == null) return null;
-    const removing = hnt.count < val[i], key = `${i}:${hnt.count}`, now = performance.now();
-    if (pending && pending.key === key && now - pending.t < HINT_MS) {
-      pending.node.remove(); pending = null;
-      pushUndo(); if (removing) rebuilds++;
-      val[i] = hnt.count; setMsg(hnt.reason, removing); draw();
-      hintLine(hnt, removing, S * 0.45, 1000);
-      haptic(removing ? 20 : undefined);
+  // ---- Tipp (LinkedIn-Stil): Begründung + Spotlight; „Anzeigen“ führt aus (undo-fähig) ----
+  const hint = () => {
+    const hnt = hashi.explainHint(p, bridges()); if (!hnt) return null;
+    const cellOf = (i) => [p.islands[i].r, p.islands[i].c];
+    const apply = () => {
+      pushUndo();
+      for (const s of hnt.set) { const i = byPair.get(pk(s.a, s.b)); if (i == null) continue; if (s.count < val[i]) rebuilds++; val[i] = s.count; }
+      setMsg(""); draw(); haptic(hnt.remove ? 20 : undefined);
+      if (!hnt.remove) for (const s of hnt.set) { const [x1, y1] = mid(...cellOf(s.a)), [x2, y2] = mid(...cellOf(s.b)); flash(svgEl("line", { x1, y1, x2, y2, stroke: "var(--ok)", "stroke-width": S * 0.45, "stroke-linecap": "round", opacity: .45 }), 900); }
       if (hashi.isSolved(p, bridges())) onSolved();
-      return removing ? (hnt.count ? "Brücke reduziert" : "Brücke entfernt") : "Brücke gesetzt";
+      const k = hnt.set.length;
+      return hnt.remove ? (k === 1 ? "Brücke entfernt." : `${k} Brücken entfernt.`) : (k === 1 ? "Brücke gesetzt." : `${k} Verbindungen gesetzt.`);
+    };
+    const pairs = hnt.set.map((s) => ({ a: s.a, b: s.b, count: s.count }));
+    return { text: hnt.text, focus: hnt.focus.map(cellOf), target: hnt.target.map(cellOf), strike: [],
+      bridges: hnt.remove ? [] : pairs, strikeBridges: hnt.remove ? pairs : [], apply };
+  };
+  // Spotlight lokal (Inseln statt Zellen): Inseln + betroffene Brückenkorridore hell, Rest abgedunkelt.
+  let spot = null; const uid = Math.random().toString(36).slice(2, 8);
+  const clearSpotlight = () => { spot?.remove(); spot = null; };
+  const spotlight = (spec = {}) => {
+    clearSpotlight();
+    const focus = spec.focus || [], target = spec.target || [], add = spec.bridges || [], rem = spec.strikeBridges || [];
+    if (!focus.length && !target.length && !add.length && !rem.length) return;
+    const W = b.W, H = b.H, R = S * 0.44, T = S * 0.42;
+    const gg = svgEl("g", { "pointer-events": "none" }), defs = svgEl("defs"), mask = svgEl("mask", { id: `hm${uid}` });
+    mask.append(svgEl("rect", { x: 0, y: 0, width: W, height: H, fill: "#fff" }));
+    const corridor = ({ a, b: bb }) => {
+      const [x1, y1] = mid(p.islands[a].r, p.islands[a].c), [x2, y2] = mid(p.islands[bb].r, p.islands[bb].c);
+      return { x: Math.min(x1, x2) - (x1 === x2 ? T / 2 : 0), y: Math.min(y1, y2) - (y1 === y2 ? T / 2 : 0), width: x1 === x2 ? T : Math.abs(x2 - x1), height: y1 === y2 ? T : Math.abs(y2 - y1) };
+    };
+    for (const br of [...add, ...rem]) mask.append(svgEl("rect", { ...corridor(br), fill: "#000" }));
+    for (const [r, c] of [...focus, ...target]) { const [cx, cy] = mid(r, c); mask.append(svgEl("circle", { cx, cy, r: R, fill: "#000" })); }
+    for (const br of [...add, ...rem]) for (const i of [br.a, br.b]) { const [cx, cy] = mid(p.islands[i].r, p.islands[i].c); mask.append(svgEl("circle", { cx, cy, r: R, fill: "#000" })); }
+    const pat = svgEl("pattern", { id: `hp${uid}`, width: 22, height: 22, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" });
+    pat.append(svgEl("rect", { x: 0, y: 0, width: 9, height: 22, fill: "rgba(255,255,255,.55)" }));
+    defs.append(mask, pat); gg.append(defs);
+    gg.append(svgEl("rect", { x: 0, y: 0, width: W, height: H, fill: "rgba(0,0,0,.58)", mask: `url(#hm${uid})`, class: "spot-dim" }));
+    for (const br of rem) gg.append(svgEl("rect", { ...corridor(br), fill: `url(#hp${uid})` }));
+    // geplante Brücken: blau gestrichelt (Vorschau der Endanzahl)
+    for (const br of add) {
+      const [x1, y1] = mid(p.islands[br.a].r, p.islands[br.a].c), [x2, y2] = mid(p.islands[br.b].r, p.islands[br.b].c);
+      const horiz = y1 === y2, sx = Math.sign(x2 - x1) * R, sy = Math.sign(y2 - y1) * R;
+      for (const o of br.count === 2 ? [-S * 0.11, S * 0.11] : [0])
+        gg.append(svgEl("line", { x1: x1 + sx + (horiz ? 0 : o), y1: y1 + sy + (horiz ? o : 0), x2: x2 - sx + (horiz ? 0 : o), y2: y2 - sy + (horiz ? o : 0), stroke: "#1f7aff", "stroke-width": S * 0.07, "stroke-dasharray": `${S * 0.12} ${S * 0.08}`, "stroke-linecap": "round" }));
     }
-    if (pending) pending.node.remove();
-    pending = { key, t: now, node: hintLine(hnt, removing, S * 0.45, HINT_MS) };
-    setMsg(hnt.reason, removing);
-    return hnt.reason + " – nochmal tippen zum Ausführen";
+    for (const [r, c] of target) { const [cx, cy] = mid(r, c); gg.append(svgEl("circle", { cx, cy, r: S * 0.42, fill: "none", stroke: "#1f7aff", "stroke-width": 8 })); }
+    b.svg.append(gg); spot = gg;
   };
 
-  draw(); return Object.assign(b, { undo, canUndo, clear, metrics });
+  draw(); return Object.assign(b, { hint, spotlight, clearSpotlight, undo, canUndo, clear, metrics });
 }

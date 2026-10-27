@@ -153,67 +153,53 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
   };
   svg.addEventListener("pointerup", up); svg.addEventListener("pointercancel", up);
 
-  // ---------- hint ----------
-  const unflash = (list) => { for (const [r, c] of list) { const rc = cells[r * n + c][0]; rc.style.fill = ""; rc.classList.remove("hintcell"); } };
-  const flash = (list, bad, ms = 900) => {
-    for (const [r, c] of list) { const rc = cells[r * n + c][0]; if (bad) rc.style.fill = "var(--bad)"; else rc.classList.add("hintcell"); }
-    setTimeout(() => unflash(list), ms);
-  };
+  // ---------- hint (LinkedIn-Stil: Begründung + Spotlight, „Anzeigen“ führt aus) ----------
+  const unflash = (list) => { for (const [r, c] of list) cells[r * n + c][0].classList.remove("hintcell"); };
+  const flash = (list, ms = 900) => { for (const [r, c] of list) cells[r * n + c][0].classList.add("hintcell"); setTimeout(() => unflash(list), ms); };
   const finish = () => { draw(); if (nonogram.isSolved(p, g)) onSolved(); };
-  // Zweistufig: 1. Aufruf hebt hervor + erklärt, 2. Aufruf (innerhalb 20 s, gleicher Tipp) führt aus.
-  let pending = null;
-  const HINT_MS = 20000;
   const hint = () => {
-    const plan = planHint(); if (!plan) { pending = null; return null; }
-    const now = performance.now();
-    if (pending && pending.key === plan.key && now - pending.t < HINT_MS) {
-      unflash(pending.cells); pending = null;
-      pushUndo(); for (const [r, c, v] of plan.cells) g[r][c] = v;
-      finish(); flash(plan.cells, plan.bad);
-      return plan.done;
-    }
-    if (pending) unflash(pending.cells);
-    pending = { key: plan.key, t: now, cells: plan.cells };
-    flash(plan.cells, plan.bad, HINT_MS);
-    return plan.msg + " – nochmal tippen zum Ausführen";
+    const hnt = nonogram.explainHint(p, g); if (!hnt) return null;
+    const rc = hnt.cells.map(([r, c]) => [r, c]);
+    const apply = () => {
+      pushUndo(); for (const [r, c, v] of hnt.cells) g[r][c] = v;
+      finish(); if (!hnt.wrong) flash(rc.filter(([r, c]) => g[r][c] === 1));
+      const k = hnt.cells.length, f = k === 1 ? "1 Feld" : `${k} Felder`;
+      if (hnt.wrong) return `${f} entfernt.`;
+      const nf = hnt.cells.filter((x) => x[2] === 1).length;
+      return nf === k ? `${f} gefüllt.` : nf ? `${nf} gefüllt, ${k - nf} mit × markiert.` : `${f} mit × markiert.`;
+    };
+    return hnt.wrong
+      ? { text: hnt.text, line: hnt.line, focus: [], target: [], strike: rc, apply }
+      : { text: hnt.text, line: hnt.line, focus: [], target: rc, strike: [], apply };
   };
-  /** Nächster Tipp ohne Ausführung: { key, cells:[[r,c,v]], bad, msg, done } oder null. */
-  const planHint = () => {
-    // (a) a wrong cell: filled but empty in the solution, or marked × but filled in the solution
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-      const s = !!p.solution[r][c];
-      if ((g[r][c] === 1 && !s) || (g[r][c] === 2 && s)) return { key: `bad${r},${c}`, cells: [[r, c, s ? 1 : 2]], bad: true, msg: "Dieses Feld ist falsch", done: "Feld korrigiert" };
+  // Spotlight lokal: ganze Zeile/Spalte inkl. Hinweiszahlen bleibt hell. Hängt am svg → skaliert mit dem Pinch-Zoom.
+  let spot = null; const uid = Math.random().toString(36).slice(2, 8);
+  const clearSpotlight = () => { spot?.remove(); spot = null; };
+  const spotlight = (spec = {}) => {
+    clearSpotlight();
+    const target = spec.target || [], strike = spec.strike || [], focus = spec.focus || [];
+    const holes = [...focus, ...target, ...strike].map(([r, c]) => [ox + c * S, oy + r * S, S, S]);
+    if (spec.line?.r != null) holes.push([0, oy + spec.line.r * S, b.W, S]);
+    if (spec.line?.c != null) holes.push([ox + spec.line.c * S, 0, S, b.H]);
+    if (!holes.length) return;
+    const gg = svgEl("g", { "pointer-events": "none" }), defs = svgEl("defs"), mask = svgEl("mask", { id: `nm${uid}` });
+    mask.append(svgEl("rect", { x: 0, y: 0, width: b.W, height: b.H, fill: "#fff" }));
+    for (const [x, y, w, hh] of holes) mask.append(svgEl("rect", { x, y, width: w, height: hh, fill: "#000" }));
+    const pat = svgEl("pattern", { id: `np${uid}`, width: 22, height: 22, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" });
+    pat.append(svgEl("rect", { x: 0, y: 0, width: 9, height: 22, fill: "rgba(255,255,255,.55)" }));
+    defs.append(mask, pat); gg.append(defs);
+    gg.append(svgEl("rect", { x: 0, y: 0, width: b.W, height: b.H, fill: "rgba(0,0,0,.58)", mask: `url(#nm${uid})`, class: "spot-dim" }));
+    for (const [r, c] of strike) gg.append(svgEl("rect", { x: ox + c * S, y: oy + r * S, width: S, height: S, fill: `url(#np${uid})` }));
+    for (const [r, c] of target) gg.append(svgEl("rect", { x: ox + c * S + 4, y: oy + r * S + 4, width: S - 8, height: S - 8, fill: "none", stroke: "#1f7aff", "stroke-width": 8, rx: 4 }));
+    svg.append(gg); spot = gg;
+    // gezoomt und Ziel nicht sichtbar → Zoom zurücksetzen, damit der Tipp nicht ins Leere zeigt
+    if (zs > 1) {
+      const er = el.getBoundingClientRect(), sr = svg.getBoundingClientRect(), k = sr.width / b.W;
+      const vis = ([r, c]) => { const x = sr.left + (ox + (c + 0.5) * S) * k, y = sr.top + (oy + (r + 0.5) * S) * k; return x >= er.left && x <= er.right && y >= er.top && y <= er.bottom; };
+      if (![...target, ...strike].every(vis)) resetZoom();
     }
-    // (b) line logic: find the row/column with the most newly deducible cells
-    const { UNK, FILL, EMPTY } = nonogram.LINE;
-    const conv = (v) => (v === 1 ? FILL : v === 2 ? EMPTY : UNK);
-    let best = null;
-    for (let r = 0; r < n; r++) {
-      const line = g[r].map(conv), nw = nonogram.solveLine(line, p.rows[r]); if (!nw) continue;
-      const k = nw.filter((v, i) => line[i] === UNK && v !== UNK).length;
-      if (k && (!best || k > best.k)) best = { k, r, nw, line };
-    }
-    for (let c = 0; c < n; c++) {
-      const line = g.map((row) => conv(row[c])), nw = nonogram.solveLine(line, p.cols[c]); if (!nw) continue;
-      const k = nw.filter((v, i) => line[i] === UNK && v !== UNK).length;
-      if (k && (!best || k > best.k)) best = { k, c, nw, line };
-    }
-    if (best) {
-      const changed = [];
-      best.nw.forEach((v, i) => {
-        if (best.line[i] !== UNK || v === UNK) return;
-        const r = best.r != null ? best.r : i, c = best.c != null ? best.c : i;
-        changed.push([r, c, v === FILL ? 1 : 2]);
-      });
-      const f = best.k === 1 ? "1 Feld" : `${best.k} Felder`;
-      const msg = best.r != null ? `Zeile ${best.r + 1}: ${f} sicher` : `Spalte ${best.c + 1}: ${f} ${best.k === 1 ? "lässt" : "lassen"} sich ableiten`;
-      return { key: (best.r != null ? "r" : "c") + (best.r ?? best.c) + ":" + changed.map((x) => x.join(".")).join("|"), cells: changed, bad: false, msg, done: `${f} gesetzt` };
-    }
-    // (c) fallback: fill one solution cell
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (p.solution[r][c] && g[r][c] !== 1) return { key: `fill${r},${c}`, cells: [[r, c, 1]], bad: false, msg: "Dieses Feld gehört zum Bild", done: "Ein Feld gefüllt" };
-    return null;
   };
 
   draw();
-  return { ...b, hint, undo, canUndo, clear, metrics };
+  return { ...b, hint, spotlight, clearSpotlight, undo, canUndo, clear, metrics };
 }

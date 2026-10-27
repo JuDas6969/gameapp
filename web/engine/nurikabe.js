@@ -307,3 +307,109 @@ export function findHint(p, g) {
     if (g[r][c] === 0 && !p.clues[r][c] && p.solution[r][c] === want) return { r, c, v: want === 1 ? 1 : 2, reason: want === 1 ? "Hier ist Wasser" : "Hier ist Insel" };
   return null;
 }
+
+/** Erklärter Tipp (LinkedIn-Stil). → { kind, text, focus:[[r,c]], target:[[r,c]], strike:[[r,c]], set:[[r,c,v]] } oder null.
+ *  v: 0 leeren, 1 Wasser, 2 Insel. Folgerungen werden gegen die Lösung abgesichert. */
+export function explainHint(p, g) {
+  const n = p.n, inb = (r, c) => r >= 0 && c >= 0 && r < n && c < n;
+  const nbs = (r, c) => DIRS4.map(([dr, dc]) => [r + dr, c + dc]).filter(([y, x]) => inb(y, x));
+  const free = (r, c) => g[r][c] === 0 && !p.clues[r][c];
+  const solV = (r, c) => (p.solution[r][c] === 1 ? 1 : 2);
+  const ok = (list, v) => list.every(([r, c]) => solV(r, c) === v);
+  const uniq = (list) => { const s = new Set(); return list.filter(([r, c]) => !s.has(key(r, c)) && s.add(key(r, c))); };
+  const felder = (k) => (k === 1 ? "ein Feld" : k === 2 ? "zwei Felder" : k === 3 ? "drei Felder" : `${k} Felder`);
+  // 1) falsche Eingaben
+  const wrong = [];
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if ((g[r][c] === 1 && p.solution[r][c] === 0) || (g[r][c] === 2 && p.solution[r][c] === 1)) wrong.push([r, c]);
+  if (wrong.length) {
+    const one = wrong.length === 1, isls0 = islands(p, g);
+    let why = null, focus = [];
+    for (const [r, c] of wrong) {
+      if (why) break;
+      if (g[r][c] === 1) for (const [y, x] of [[r - 1, c - 1], [r - 1, c], [r, c - 1], [r, c]]) {
+        const blk = [[y, x], [y, x + 1], [y + 1, x], [y + 1, x + 1]];
+        if (blk.every(([yy, xx]) => inb(yy, xx) && g[yy][xx] === 1)) { why = "Vier Wasserfelder bilden einen 2×2-Block – das ist nicht erlaubt."; focus = blk; break; }
+      } else {
+        const isl = isls0.find((i) => i.cells.some(([y, x]) => y === r && x === c));
+        if (isl && isl.clues.length >= 2) { why = "Diese Insel verbindet zwei Zahlen – jede Insel hat genau eine."; focus = isl.cells; }
+        else if (isl && isl.clues.length === 1 && isl.cells.length > isl.clues[0]) { why = `Diese Insel ist größer als ihre ${isl.clues[0]}.`; focus = isl.cells; }
+      }
+    }
+    why ||= one ? "Dieses Feld widerspricht der einzig möglichen Lösung." : "Diese Felder widersprechen der einzig möglichen Lösung.";
+    return { kind: "wrong", text: `${why}\n${one ? "Entfernen Sie das gestreifte Feld." : "Entfernen Sie die gestreiften Felder."}`, focus, target: [], strike: wrong, set: wrong.map(([r, c]) => [r, c, 0]) };
+  }
+  if (isSolved(p, g)) return null;
+  const isls = islands(p, g), compOf = grid(n, -1);
+  isls.forEach((isl, i) => isl.cells.forEach(([r, c]) => { compOf[r][c] = i; }));
+  const clueIsl = (i) => i >= 0 && isls[i].clues.length === 1;
+  const mk = (kind, text, focus, target, v) => ({ kind, text, focus, target, strike: [], set: target.map(([r, c]) => [r, c, v]) });
+  // 2) vollständige Insel → angrenzende Felder Wasser
+  for (const isl of isls) {
+    if (isl.clues.length !== 1 || isl.cells.length !== isl.clues[0]) continue;
+    const t = uniq(isl.cells.flatMap(([r, c]) => nbs(r, c)).filter(([y, x]) => free(y, x)));
+    if (!t.length || !ok(t, 1)) continue;
+    const text = isl.clues[0] === 1 ? "Eine 1er-Insel besteht nur aus ihrem Zahlenfeld.\nAlle angrenzenden Felder müssen Wasser sein."
+      : `Diese Insel hat schon ihre ${isl.clues[0]} Felder.\nAlle angrenzenden Felder müssen Wasser sein.`;
+    return mk("complete", text, isl.cells, t, 1);
+  }
+  // 3) Feld grenzt an zwei verschiedene Zahlen-Inseln
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (!free(r, c)) continue;
+    const ids = [...new Set(nbs(r, c).map(([y, x]) => compOf[y][x]).filter((i) => i >= 0 && isls[i].clues.length))];
+    if (ids.length >= 2 && ok([[r, c]], 1)) return mk("between", "Dieses Feld grenzt an zwei verschiedene Zahlen-Inseln.\nEs muss Wasser sein.", ids.flatMap((i) => isls[i].cells), [[r, c]], 1);
+  }
+  // 4) drei Wasser im 2×2 → viertes Feld Insel
+  for (let r = 0; r + 1 < n; r++) for (let c = 0; c + 1 < n; c++) {
+    const blk = [[r, c], [r, c + 1], [r + 1, c], [r + 1, c + 1]], water = blk.filter(([y, x]) => g[y][x] === 1);
+    if (water.length !== 3) continue;
+    const t = blk.filter(([y, x]) => g[y][x] !== 1);
+    if (free(...t[0]) && ok(t, 2)) return mk("block", "Drei Wasserfelder bilden fast einen 2×2-Block.\nDas vierte Feld muss Insel sein.", water, t, 2);
+  }
+  // 5) Insel kann nur noch in eine Richtung wachsen
+  for (let i = 0; i < isls.length; i++) {
+    const isl = isls[i]; if (!clueIsl(i) || isl.cells.length >= isl.clues[0]) continue;
+    const front = uniq(isl.cells.flatMap(([r, c]) => nbs(r, c)).filter(([y, x]) => free(y, x)
+      && !nbs(y, x).some(([yy, xx]) => compOf[yy][xx] >= 0 && compOf[yy][xx] !== i && isls[compOf[yy][xx]].clues.length)));
+    if (front.length === 1 && ok(front, 2)) {
+      const rem = isl.clues[0] - isl.cells.length;
+      return mk("grow", `Diese ${isl.clues[0]}er-Insel braucht noch ${felder(rem)} und kann nur in eine Richtung wachsen.\nDas hervorgehobene Feld muss Insel sein.`, isl.cells, front, 2);
+    }
+  }
+  // 6) Feld, das keine Insel mehr erreichen kann → Wasser
+  {
+    const reach = grid(n, false);
+    for (let i = 0; i < isls.length; i++) {
+      if (!clueIsl(i)) continue;
+      const rem = isls[i].clues[0] - isls[i].cells.length; if (rem <= 0) continue;
+      const dist = grid(n, -1), q = isls[i].cells.map(([r, c]) => { dist[r][c] = 0; return [r, c]; });
+      while (q.length) {
+        const [r, c] = q.shift(); if (dist[r][c] >= rem) continue;
+        for (const [y, x] of nbs(r, c)) if (dist[y][x] < 0 && g[y][x] !== 1 && !(p.clues[y][x] && compOf[y][x] !== i) && !nbs(y, x).some(([yy, xx]) => compOf[yy][xx] >= 0 && compOf[yy][xx] !== i && isls[compOf[yy][xx]].clues.length)) { dist[y][x] = dist[r][c] + 1; reach[y][x] = true; q.push([y, x]); }
+      }
+    }
+    const t = [];
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (free(r, c) && !reach[r][c]) t.push([r, c]);
+    if (t.length && ok(t, 1)) {
+      const one = t.length === 1;
+      return mk("reach", `${one ? "Dieses Feld ist" : "Diese Felder sind"} zu weit von jeder Zahl entfernt – keine Insel reicht bis hierher.\n${one ? "Es muss" : "Sie müssen"} Wasser sein.`, [], t, 1);
+    }
+  }
+  // 7) Wasser mit nur einem Ausweg
+  {
+    const totalW = p.solution.flat().filter((v) => v === 1).length, seen = grid(n, false);
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      if (g[r][c] !== 1 || seen[r][c]) continue;
+      const comp = [], st = [[r, c]]; seen[r][c] = true;
+      while (st.length) { const [y, x] = st.pop(); comp.push([y, x]); for (const [yy, xx] of nbs(y, x)) if (g[yy][xx] === 1 && !seen[yy][xx]) { seen[yy][xx] = true; st.push([yy, xx]); } }
+      if (comp.length >= totalW) continue;
+      const exits = uniq(comp.flatMap(([y, x]) => nbs(y, x)).filter(([yy, xx]) => free(yy, xx)));
+      if (exits.length === 1 && ok(exits, 1)) return mk("exit", "Alles Wasser muss zusammenhängen – dieses Wasser hat nur noch einen Ausweg.\nDas hervorgehobene Feld muss Wasser sein.", comp, exits, 1);
+    }
+  }
+  // 8) Rückfall: Lösungsfeld (erst Wasser, dann Insel)
+  for (const want of [1, 0]) for (let r = 0; r < n; r++) for (let c = 0; c < n; c++)
+    if (free(r, c) && p.solution[r][c] === want)
+      return mk("fallback", want === 1 ? "Nur so bleibt alles Wasser zusammenhängend und jede Insel bekommt genau ihre Größe – das Rätsel hat nur diese Lösung.\nDas hervorgehobene Feld muss Wasser sein."
+        : "Nur so bekommt jede Insel genau ihre Größe – das Rätsel hat nur diese Lösung.\nDas hervorgehobene Feld muss Insel sein.", [], [[r, c]], want === 1 ? 1 : 2);
+  return null;
+}

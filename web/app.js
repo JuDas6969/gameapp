@@ -164,7 +164,6 @@ async function Game(kind, session) {
   function showPanel(text, withButton) {
     hintText.replaceChildren(...String(text).split("\n").map((t) => h("p", {}, t)));
     hintGo.hidden = !withButton; hintPanel.hidden = false;
-    hintPanel.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
   }
   function askHint() {
     if (!board?.hint || solved || Date.now() < cooldownUntil) return;

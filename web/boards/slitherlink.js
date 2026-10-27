@@ -133,28 +133,50 @@ export function Slitherlink(p, { onSolved, tools, haptic }) {
     const l = svgEl("line", { x1: X(c1), y1: Y(r1), x2: X(c2), y2: Y(r2), stroke: color, "stroke-width": S * 0.3, "stroke-linecap": "round", opacity: .6 });
     fx.append(l); setTimeout(() => l.remove(), ms); return l;
   };
-  // Zweistufiger Tipp: 1. Aufruf hebt die Kante hervor + erklärt, 2. Aufruf (innerhalb 20 s, gleicher Tipp) führt aus.
-  let pending = null; const HINT_MS = 20000;
-  const DONE = { add: "Kante gesetzt", uncross: "Kante gesetzt", remove: "Kante entfernt", cross: "Kante ausgeschlossen" };
-  b.hint = () => {
-    const hnt = sl.findHint(p, edges, crosses);
-    if (!hnt) { pending = null; return null; }
-    const e = g.idx(hnt.edge), k = hnt.edge, key = `${hnt.type}:${k}`, now = performance.now();
-    const color = hnt.type === "remove" ? "var(--bad)" : "var(--ok)";
-    if (pending && pending.key === key && now - pending.t < HINT_MS) {
-      pending.node.remove(); pending = null; pushUndo();
-      if (hnt.type === "add" || hnt.type === "uncross") { edges.add(k); crosses.delete(k); }
-      else if (hnt.type === "remove") { edges.delete(k); haptic?.(20); }
-      else if (hnt.type === "cross") { crosses.add(k); edges.delete(k); }
-      flash(e, color); draw(); setMsg(hnt.reason, hnt.type === "remove");
+  // ---- Tipp (LinkedIn-Stil): Begründung + Spotlight; „Anzeigen“ führt aus (undo-fähig) ----
+  const hint = () => {
+    const hnt = sl.explainHint(p, edges, crosses); if (!hnt) return null;
+    const apply = () => {
+      pushUndo();
+      for (const { edge: k, to } of hnt.ops) {
+        if (edges.has(k) && to !== "edge") corrections++;
+        edges.delete(k); crosses.delete(k);
+        if (to === "edge") edges.add(k); else if (to === "cross") crosses.add(k);
+      }
+      for (const { edge: k, to } of hnt.ops) if (to === "edge") flash(g.idx(k), "var(--ok)", 900);
+      draw(); setMsg(""); haptic?.(hnt.kind === "wrong" ? 20 : 8);
       if (sl.isSolved(p, edges)) onSolved();
-      return DONE[hnt.type];
-    }
-    if (pending) pending.node.remove();
-    pending = { key, t: now, node: flash(e, color, HINT_MS) };
-    setMsg(hnt.reason, hnt.type === "remove");
-    return hnt.reason + " – nochmal tippen zum Ausführen";
+      const k = hnt.ops.length, to = hnt.ops[0].to;
+      return to === "none" ? (hnt.kind === "wrongcross" ? (k === 1 ? "× entfernt." : `${k} × entfernt.`) : (k === 1 ? "Linie entfernt." : `${k} Linien entfernt.`))
+        : to === "cross" ? (k === 1 ? "Kante mit × markiert." : `${k} Kanten mit × markiert.`) : (k === 1 ? "Kante gezeichnet." : `${k} Kanten gezeichnet.`);
+    };
+    return { text: hnt.text, focus: hnt.cells, target: [], strike: [], nodes: hnt.nodes, focusEdges: hnt.focusEdges, targetEdges: hnt.targetEdges, strikeEdges: hnt.strikeEdges, apply };
+  };
+  // Spotlight lokal (kantenbasiert): Begründungs-Zellen, Punkte und Kanten hell, Rest abgedunkelt.
+  let spot = null; const uid = Math.random().toString(36).slice(2, 8);
+  const clearSpotlight = () => { spot?.remove(); spot = null; };
+  const spotlight = (spec = {}) => {
+    clearSpotlight();
+    const cellsF = spec.focus || [], nodes = spec.nodes || [], fe = spec.focusEdges || [], te = spec.targetEdges || [], se = spec.strikeEdges || [];
+    if (!cellsF.length && !nodes.length && !fe.length && !te.length && !se.length) return;
+    const T = S * 0.34, hole = (k) => {
+      const [[r1, c1], [r2, c2]] = g.edgeEnds(g.idx(k));
+      return r1 === r2 ? { x: X(c1) - T / 2, y: Y(r1) - T / 2, width: S + T, height: T, rx: T / 2 } : { x: X(c1) - T / 2, y: Y(r1) - T / 2, width: T, height: S + T, rx: T / 2 };
+    };
+    const gg = svgEl("g", { "pointer-events": "none" }), defs = svgEl("defs"), mask = svgEl("mask", { id: `sm${uid}` });
+    mask.append(svgEl("rect", { x: 0, y: 0, width: W, height: H, fill: "#fff" }));
+    for (const [r, c] of cellsF) mask.append(svgEl("rect", { x: X(c), y: Y(r), width: S, height: S, fill: "#000" }));
+    for (const k of [...fe, ...te, ...se]) mask.append(svgEl("rect", { ...hole(k), fill: "#000" }));
+    for (const [r, c] of nodes) mask.append(svgEl("circle", { cx: X(c), cy: Y(r), r: S * 0.24, fill: "#000" }));
+    const pat = svgEl("pattern", { id: `sp${uid}`, width: 22, height: 22, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" });
+    pat.append(svgEl("rect", { x: 0, y: 0, width: 9, height: 22, fill: "rgba(255,255,255,.55)" }));
+    defs.append(mask, pat); gg.append(defs);
+    gg.append(svgEl("rect", { x: 0, y: 0, width: W, height: H, fill: "rgba(0,0,0,.58)", mask: `url(#sm${uid})`, class: "spot-dim" }));
+    for (const k of se) gg.append(svgEl("rect", { ...hole(k), fill: `url(#sp${uid})` }));
+    for (const k of te) { const hh = hole(k); gg.append(svgEl("rect", { ...hh, fill: "none", stroke: "#1f7aff", "stroke-width": 6 })); }
+    for (const [r, c] of nodes) gg.append(svgEl("circle", { cx: X(c), cy: Y(r), r: S * 0.2, fill: "none", stroke: "#1f7aff", "stroke-width": 6 }));
+    b.svg.append(gg); spot = gg;
   };
 
-  draw(); return Object.assign(b, { undo, canUndo, clear, metrics });
+  draw(); return Object.assign(b, { hint, spotlight, clearSpotlight, undo, canUndo, clear, metrics });
 }

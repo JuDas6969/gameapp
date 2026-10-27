@@ -201,3 +201,79 @@ export function generate(diff, seed) {
     if (countSolutions(p, 2, 60000) === 1) return p;
   }
 }
+
+/** Erklärter Tipp (LinkedIn-Stil).
+ *  → { kind, text, focus:[islandIdx], target:[islandIdx], set:[{a,b,count}], remove:boolean } oder null (gelöst). */
+export function explainHint(p, bridges) {
+  const sol = new Map(p.solution.map((s) => [pairKey(s.a, s.b), s.count]));
+  const cur = new Map(); for (const b of bridges) if (b.count) cur.set(pairKey(b.a, b.b), (cur.get(pairKey(b.a, b.b)) || 0) + b.count);
+  const { edges, cross } = buildEdges(p);
+  const N = p.islands.length, st = status(p, bridges);
+  const brk = (k) => (k === 1 ? "eine Brücke" : "zwei Brücken");
+  const word = (k) => ["keine", "einen", "zwei", "drei", "vier"][k] || String(k);
+  const where = (is) => { const pl = place(p, is); return pl.startsWith("in Zeile") ? "" : ` ${pl}`; };
+  // 1) falsche Brücken
+  const wrong = [];
+  for (const [k, c] of cur) { const want = sol.get(k) || 0; if (c > want) { const [a, b] = k.split("-").map(Number); wrong.push({ a, b, count: want }); } }
+  if (wrong.length) {
+    const one = wrong.length === 1, w = wrong[0];
+    const overI = [w.a, w.b].find((i) => st.counts[i] > p.islands[i].num);
+    const why = overI != null ? `Die ${p.islands[overI].num} hat schon ${st.counts[overI]} Brücken – mehr als ihre Zahl erlaubt.`
+      : one ? (w.count ? "Zwischen diesen Inseln liegt eine Brücke zu viel – so lassen sich die übrigen Inseln nicht mehr passend verbinden." : "Diese Brücke gehört nicht zur Lösung – mit ihr lassen sich die übrigen Inseln nicht mehr passend verbinden.")
+        : "Diese Brücken gehören nicht zur Lösung – mit ihnen lassen sich die übrigen Inseln nicht mehr passend verbinden.";
+    return { kind: "wrong", remove: true, text: `${why}\n${one ? "Entfernen Sie die gestreifte Brücke." : "Entfernen Sie die gestreiften Brücken."}`, focus: overI != null ? [overI] : [], target: [], set: wrong };
+  }
+  if (isSolved(p, bridges)) return null;
+  const val = edges.map((e) => cur.get(pairKey(e.a, e.b)) || 0);
+  const inc = Array.from({ length: N }, () => []); edges.forEach((e, i) => { inc[e.a].push(i); inc[e.b].push(i); });
+  const other = (e, i) => (edges[e].a === i ? edges[e].b : edges[e].a);
+  const capsOf = (i) => {
+    const rem = p.islands[i].num - st.counts[i];
+    return inc[i].map((e) => {
+      const j = other(e, i);
+      let cap = Math.min(2 - val[e], rem, p.islands[j].num - st.counts[j]);
+      if (cross[e].some((f) => val[f] > 0)) cap = 0;
+      if (N > 2 && !val[e]) { if (p.islands[i].num === 1 && p.islands[j].num === 1) cap = 0; if (p.islands[i].num === 2 && p.islands[j].num === 2) cap = Math.min(cap, 1); }
+      return [e, Math.max(0, cap)];
+    });
+  };
+  const fits = (set) => set.every((s) => s.count <= (sol.get(pairKey(s.a, s.b)) || 0));
+  // 2) Insel, deren restliche Brücken alle erzwungen sind
+  const forced = [];
+  for (let i = 0; i < N; i++) {
+    const is = p.islands[i], rem = is.num - st.counts[i]; if (rem <= 0) continue;
+    const caps = capsOf(i), free = caps.filter(([, c]) => c > 0), sum = free.reduce((s, [, c]) => s + c, 0);
+    if (sum !== rem || !free.length) continue;
+    const set = free.map(([e, c]) => ({ a: edges[e].a, b: edges[e].b, count: val[e] + c }));
+    if (!fits(set)) continue;
+    const tgt = free.map(([e]) => other(e, i)), k = free.length, fresh = st.counts[i] === 0;
+    let text;
+    if (k === 1) text = `Die ${is.num}${where(is)} hat nur ${fresh ? "einen möglichen Nachbarn" : "noch einen freien Nachbarn"}.\nVerbinden Sie sie ${free[0][1] === 2 ? "mit zwei Brücken " : ""}mit der hervorgehobenen Insel.`;
+    else if (fresh && free.every(([, c]) => c === 2)) text = `Die ${is.num}${where(is)} hat nur ${word(k)} Nachbarn.\nSie braucht zu ${k === 2 ? "beiden" : `allen ${word(k)}`} je zwei Brücken.`;
+    else if (free.every(([, c]) => c === 1)) text = `Die ${is.num}${where(is)} braucht noch ${brk(rem) === "eine Brücke" ? "eine Brücke" : `${rem} Brücken`} und hat genau ${word(k)} freie Nachbarn, die noch eine aufnehmen können.\nSie braucht zu jedem eine Brücke.`;
+    else text = `Die ${is.num}${where(is)} braucht noch ${rem} Brücken – genau so viele passen noch zu ihren Nachbarn.\nSetzen Sie alle hervorgehobenen Brücken.`;
+    forced.push({ kind: "forced", pr: k === 1 ? 0 : 1, text, focus: [i], target: tgt, set });
+  }
+  // 3) Mindestens eine Brücke zu jedem Nachbarn (Rest reicht sonst nicht)
+  for (let i = 0; i < N; i++) {
+    const is = p.islands[i], rem = is.num - st.counts[i]; if (rem <= 0) continue;
+    const caps = capsOf(i), free = caps.filter(([, c]) => c > 0), sum = free.reduce((s, [, c]) => s + c, 0);
+    if (sum <= rem) continue;
+    const need = free.map(([e, c]) => [e, rem - (sum - c)]).filter(([, m]) => m > 0);
+    if (!need.length) continue;
+    const set = need.map(([e, m]) => ({ a: edges[e].a, b: edges[e].b, count: val[e] + m }));
+    if (!fits(set)) continue;
+    const tgt = need.map(([e]) => other(e, i)), all = need.length === free.length;
+    const text = all
+      ? `Die ${is.num}${where(is)} braucht noch ${rem} Brücken, hat aber nur ${word(free.length)} freie Nachbarn mit Platz für ${sum}.\nSie braucht zu ${free.length === 2 ? "beiden" : "jedem"} mindestens eine Brücke.`
+      : `Die ${is.num}${where(is)} braucht noch ${rem} Brücken – ohne die hervorgehobene${need.length > 1 ? "n Inseln" : " Insel"} reichen die übrigen Nachbarn nicht aus.\nSetzen Sie dorthin mindestens eine Brücke.`;
+    forced.push({ kind: "atleast", pr: 2, text, focus: [i], target: tgt, set });
+  }
+  if (forced.length) { forced.sort((x, y) => x.pr - y.pr); const { pr, ...h } = forced[0]; return { ...h, remove: false }; }
+  // 4) Rückfall: fehlende Lösungsbrücke
+  for (const s of p.solution) {
+    const have = cur.get(pairKey(s.a, s.b)) || 0;
+    if (have < s.count) return { kind: "fallback", remove: false, text: `Ohne ${s.count - have === 1 ? "diese Brücke" : "diese Brücken"} ließen sich nicht alle Inseln erfüllen und gleichzeitig zu einer Gruppe verbinden.\nVerbinden Sie die hervorgehobenen Inseln${s.count === 2 ? " mit zwei Brücken" : ""}.`, focus: [], target: [s.a, s.b], set: [{ a: s.a, b: s.b, count: s.count }] };
+  }
+  return null;
+}

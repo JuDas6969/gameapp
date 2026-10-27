@@ -335,3 +335,80 @@ export function findHint(p, edges, crosses = new Set()) {
   for (const k of missing) { const e = g.idx(k); if (deg[g.edgeNodes[e * 2]] > 0 || deg[g.edgeNodes[e * 2 + 1]] > 0) return mk(k, "Eine Kante der Lösung"); }
   return missing.length ? mk(missing[0], "Eine Kante der Lösung") : null;
 }
+
+/** Erklärter Tipp (LinkedIn-Stil). edges/crosses: Sets von Kanten-Keys.
+ *  → { kind, text, cells:[[r,c]] (Begründungs-Zellen), focusEdges:[key], targetEdges:[key], strikeEdges:[key], nodes:[[r,c]],
+ *      ops:[{ edge, to: "edge"|"cross"|"none" }] } oder null (gelöst). */
+export function explainHint(p, edges, crosses = new Set()) {
+  const n = p.n, g = geo(n), sol = new Set(p.solution);
+  if (isSolved(p, edges)) return null;
+  const NUM = ["keine", "eine", "zwei", "drei", "vier"];
+  const base = (o) => ({ cells: [], focusEdges: [], targetEdges: [], strikeEdges: [], nodes: [], ...o });
+  const deg = nodeDegrees(p, edges), cnt = cellCounts(p, edges);
+  const isFree = (k) => !edges.has(k) && !crosses.has(k);
+  const cellKeys = (r, c) => [0, 1, 2, 3].map((j) => g.keys[g.cellEdges[(r * n + c) * 4 + j]]);
+  const nodeKeys = (nd) => { const out = []; for (let i = 0; i < g.nodeDeg[nd]; i++) out.push(g.keys[g.nodeEdges[nd * 4 + i]]); return out; };
+  // 1) falsche Linien
+  const wrongE = [...edges].filter((k) => !sol.has(k));
+  if (wrongE.length) {
+    const one = wrongE.length === 1; let why = null, cells = [], nodes = [];
+    for (const k of wrongE) {
+      if (why) break; const e = g.idx(k);
+      for (let i = 0; i < 2 && !why; i++) { const ci = g.edgeCells[e * 2 + i]; if (ci < 0) continue; const r = Math.floor(ci / n), c = ci % n;
+        if (p.clues[r][c] >= 0 && cnt[r][c] > p.clues[r][c]) { why = `Die ${p.clues[r][c]} hat schon ${NUM[cnt[r][c]] || cnt[r][c]} Kante${cnt[r][c] === 1 ? "" : "n"} – mehr als ihre Zahl erlaubt.`; cells = [[r, c]]; } }
+      for (let i = 0; i < 2 && !why; i++) { const nd = g.edgeNodes[e * 2 + i];
+        if (deg[nd] >= 3) { why = "An diesem Punkt treffen sich drei Linien – der Rundweg darf sich nicht verzweigen."; nodes = [g.nodeRC(nd)]; } }
+    }
+    why ||= one ? "Diese Linie gehört nicht zum Rundweg – mit ihr lässt sich keine geschlossene Schleife bilden, die zu allen Zahlen passt."
+      : "Diese Linien gehören nicht zum Rundweg – mit ihnen lässt sich keine geschlossene Schleife bilden, die zu allen Zahlen passt.";
+    return base({ kind: "wrong", text: `${why}\n${one ? "Entfernen Sie die gestreifte Linie." : "Entfernen Sie die gestreiften Linien."}`, cells, nodes, strikeEdges: wrongE, ops: wrongE.map((k) => ({ edge: k, to: "none" })) });
+  }
+  const wrongX = [...crosses].filter((k) => sol.has(k));
+  if (wrongX.length) {
+    const one = wrongX.length === 1;
+    return base({ kind: "wrongcross", text: `${one ? "Dieses × sperrt eine Kante" : "Diese × sperren Kanten"}, die der Rundweg braucht – sonst lässt er sich nicht passend zu den Zahlen schließen.\n${one ? "Entfernen Sie das gestreifte ×." : "Entfernen Sie die gestreiften ×."}`, strikeEdges: wrongX, ops: wrongX.map((k) => ({ edge: k, to: "none" })) });
+  }
+  const add = (ks) => ks.map((k) => ({ edge: k, to: "edge" })), cross = (ks) => ks.map((k) => ({ edge: k, to: "cross" }));
+  const okAdd = (ks) => ks.every((k) => sol.has(k)), okCross = (ks) => ks.every((k) => !sol.has(k));
+  // 2) 0 → alle vier Kanten ×
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (p.clues[r][c] !== 0) continue; const t = cellKeys(r, c).filter(isFree);
+    if (t.length && okCross(t)) return base({ kind: "zero", text: `Um eine 0 herum liegen keine Kanten.\nMarkieren Sie ${t.length === 4 ? "alle vier" : t.length === 1 ? "die letzte" : "die übrigen"} mit ×.`, cells: [[r, c]], targetEdges: t, ops: cross(t) });
+  }
+  // 3) 3 in der Ecke → beide Außenkanten
+  for (const [r, c] of [[0, 0], [0, n - 1], [n - 1, 0], [n - 1, n - 1]]) {
+    if (p.clues[r][c] !== 3) continue;
+    const outer = [g.keys[g.h(r === 0 ? 0 : n, c)], g.keys[g.v(r, c === 0 ? 0 : n)]], t = outer.filter((k) => !edges.has(k));
+    if (t.length && okAdd(t)) return base({ kind: "corner3", text: `Eine 3 in der Ecke nutzt beide Außenkanten.\nZeichnen Sie ${t.length === 2 ? "die beiden hervorgehobenen Kanten" : "die hervorgehobene Kante"}.`, cells: [[r, c]], targetEdges: t, ops: add(t) });
+  }
+  // 4) Punkt mit einer Linie und nur einem freien Weg
+  for (let nd = 0; nd < g.N; nd++) {
+    if (deg[nd] !== 1) continue; const ks = nodeKeys(nd), fr = ks.filter(isFree);
+    if (fr.length === 1 && okAdd(fr)) return base({ kind: "continue", text: "Dieser Punkt hat schon eine Linie und nur noch einen freien Weg.\nDie Linie muss hier weitergehen.", nodes: [g.nodeRC(nd)], focusEdges: ks.filter((k) => edges.has(k)), targetEdges: fr, ops: add(fr) });
+  }
+  // 5) Zahl, die alle freien Kanten braucht
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const v = p.clues[r][c]; if (v <= 0) continue; const fr = cellKeys(r, c).filter(isFree);
+    if (fr.length && cnt[r][c] + fr.length === v && okAdd(fr)) {
+      const text = cnt[r][c] === 0 ? `Die ${v} hat nur noch ${NUM[fr.length]} freie Kante${fr.length === 1 ? "" : "n"}.\n${fr.length === 1 ? "Sie gehört" : fr.length === 2 ? "Beide gehören" : "Alle gehören"} zum Rundweg.`
+        : `Die ${v} hat schon ${NUM[cnt[r][c]]} Kante${cnt[r][c] > 1 ? "n" : ""} und nur noch ${NUM[fr.length]} freie.\n${fr.length === 1 ? "Sie gehört" : "Alle gehören"} zum Rundweg.`;
+      return base({ kind: "clueall", text, cells: [[r, c]], focusEdges: cellKeys(r, c).filter((k) => edges.has(k)), targetEdges: fr, ops: add(fr) });
+    }
+  }
+  // 6) Zahl ist erfüllt → übrige Kanten ×
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const v = p.clues[r][c]; if (v <= 0) continue; const fr = cellKeys(r, c).filter(isFree);
+    if (fr.length && cnt[r][c] === v && okCross(fr)) return base({ kind: "cluefull", text: `Die ${v} hat schon ${v === 1 ? "ihre Kante" : `ihre ${NUM[v]} Kanten`}.\nMarkieren Sie die übrigen mit ×.`, cells: [[r, c]], focusEdges: cellKeys(r, c).filter((k) => edges.has(k)), targetEdges: fr, ops: cross(fr) });
+  }
+  // 7) Punkt mit zwei Linien → übrige Wege ×; Punkt ohne Linie mit nur einem freien Weg → ×
+  for (let nd = 0; nd < g.N; nd++) {
+    const ks = nodeKeys(nd), fr = ks.filter(isFree);
+    if (deg[nd] === 2 && fr.length && okCross(fr)) return base({ kind: "node2", text: "Durch diesen Punkt laufen schon zwei Linien – der Rundweg geht hier nicht weiter.\nMarkieren Sie die übrigen Wege mit ×.", nodes: [g.nodeRC(nd)], focusEdges: ks.filter((k) => edges.has(k)), targetEdges: fr, ops: cross(fr) });
+    if (deg[nd] === 0 && fr.length === 1 && okCross(fr)) return base({ kind: "deadend", text: "Von diesem Punkt führt nur noch ein Weg weg – eine Linie hier wäre eine Sackgasse.\nMarkieren Sie ihn mit ×.", nodes: [g.nodeRC(nd)], targetEdges: fr, ops: cross(fr) });
+  }
+  // 8) Rückfall: Lösungskante, bevorzugt am gezeichneten Weg
+  const missing = p.solution.filter((k) => !edges.has(k));
+  const pick = missing.find((k) => { const e = g.idx(k); return deg[g.edgeNodes[e * 2]] > 0 || deg[g.edgeNodes[e * 2 + 1]] > 0; }) || missing[0];
+  if (!pick) return null;
+  return base({ kind: "fallback", text: "Wer weiter vorausdenkt, sieht: Nur mit dieser Kante lässt sich die Schleife passend zu allen Zahlen schließen.\nZeichnen Sie die hervorgehobene Kante.", targetEdges: [pick], ops: add([pick]) });
+}
