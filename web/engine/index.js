@@ -7,9 +7,10 @@ import * as nonogram from "./nonogram.js";
 import * as hashi from "./hashi.js";
 import * as slitherlink from "./slitherlink.js";
 import * as nurikabe from "./nurikabe.js";
+import * as kakuro from "./kakuro.js";
 export * from "./core.js";
 
-export const ENGINES = { sudoku, queens, tango, zip, patches, nonogram, hashi, slitherlink, nurikabe };
+export const ENGINES = { sudoku, queens, tango, zip, patches, nonogram, hashi, slitherlink, nurikabe, kakuro };
 
 export function generate(kind, diff, seed) {
   return ENGINES[kind].generate(diff, seed);

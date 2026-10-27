@@ -42,6 +42,8 @@ ${UNIQUE}` },
     rules: "Zeichne entlang der Gitterlinien einen einzigen geschlossenen Rundweg, der sich nicht kreuzt oder verzweigt. Jede Zahl gibt an, wie viele der vier Kanten um dieses Feld zum Rundweg gehören.\nTippen: leer → Linie → × → leer. Ziehen von Punkt zu Punkt zeichnet Linien." },
   nurikabe: { title: "Inseln", icon: "▞", subtitle: "Umfließe nummerierte Inseln mit zusammenhängendem Wasser",
     rules: "Jedes Feld ist Wasser oder Insel. Jede Zahl gehört zu genau einer Insel mit so vielen Feldern, und Inseln dürfen sich nicht berühren. Alles Wasser hängt zusammen und bildet nie einen 2×2-Block.\nWerkzeug wählen, dann tippen oder entlang einer Zeile/Spalte ziehen." },
+  kakuro: { title: "Kreuzsumme", icon: "Σ", subtitle: "Ziffern 1–9, die Summen am Rand müssen stimmen",
+    rules: "Fülle die weißen Felder mit den Ziffern 1 bis 9, sodass jede waagrechte und senkrechte Reihe die Summe ergibt, die im schwarzen Feld davor steht. Innerhalb einer Reihe darf keine Ziffer doppelt vorkommen." },
 };
 export const GAME_KEYS = Object.keys(GAMES);
 

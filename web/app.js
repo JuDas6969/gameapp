@@ -161,7 +161,7 @@ async function Game(kind, session) {
   render(screen);
 
   const stop = () => { pause(); clearInterval(tick); tick = null; };
-  const leave = () => { stop(); document.removeEventListener("visibilitychange", onVis); window.removeEventListener("resize", fit); };
+  const leave = () => { board?.destroy?.(); stop(); document.removeEventListener("visibilitychange", onVis); window.removeEventListener("resize", fit); };
   const onSolved = () => {
     if (solved) return; solved = true; stop(); haptic(30);
     board?.lock?.(); updateUndo();
@@ -198,7 +198,7 @@ async function Game(kind, session) {
   };
   async function load() {
     stop(); elapsed = 0; runStart = null; solved = false; hints = 0; hintBtn.textContent = "💡 Tipp"; timeEl.textContent = "0:00";
-    board = null; updateUndo();
+    board?.destroy?.(); board = null; updateUndo();
     wrap.replaceChildren(h("div", { class: "spin" })); tools.replaceChildren();
     const seed = isDaily ? dailySeed(kind) : randomSeed();
     const diff = isDaily ? dailyDiff() : session.diff;

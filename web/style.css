@@ -108,3 +108,17 @@ h1, h2 { margin: 0; font-family: "New York", "Iowan Old Style", Georgia, serif; 
 .top { gap: 4px; }
 .top button { padding: 8px 7px; }
 .top .title { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* ---- on-screen keyboard (word games) ---- */
+.kb { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 560px; margin: 0 auto; padding: 4px 4px 0; user-select: none; -webkit-user-select: none; }
+.kb-row { display: flex; gap: 5px; justify-content: center; }
+.kb-key { flex: 1 1 0; min-width: 0; height: 46px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); font-size: 17px; font-weight: 700; color: var(--ink); touch-action: manipulation; }
+.kb-key.wide { flex: 1.5 1 0; font-size: 15px; }
+.kb-key:active { background: var(--accent-soft); }
+.kb-key.ok { background: var(--ok); color: #fff; border-color: var(--ok); }
+.kb-key.near { background: var(--sun); color: #fff; border-color: var(--sun); }
+.kb-key.miss { background: var(--line); color: var(--muted); }
+.kb-gap { flex: 1.5 1 0; }
+.tools .kb { flex: 1 0 100%; }
+/* word-game boards are plain DOM (not SVG) */
+.board.dom { touch-action: manipulation; }
