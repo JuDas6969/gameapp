@@ -12,5 +12,6 @@ import { Woertle } from "./woertle.js";
 import { Wortpfad } from "./wortpfad.js";
 import { Treffpunkt } from "./treffpunkt.js";
 import { Wortleiter } from "./wortleiter.js";
+import { Kreuzwort } from "./kreuzwort.js";
 
-export const BOARDS = { sudoku: Sudoku, queens: Queens, tango: Tango, zip: Zip, patches: Patches, nonogram: Nonogram, hashi: Hashi, slitherlink: Slitherlink, nurikabe: Nurikabe, kakuro: Kakuro, woertle: Woertle, wortpfad: Wortpfad, treffpunkt: Treffpunkt, wortleiter: Wortleiter };
+export const BOARDS = { sudoku: Sudoku, queens: Queens, tango: Tango, zip: Zip, patches: Patches, nonogram: Nonogram, hashi: Hashi, slitherlink: Slitherlink, nurikabe: Nurikabe, kakuro: Kakuro, woertle: Woertle, wortpfad: Wortpfad, treffpunkt: Treffpunkt, wortleiter: Wortleiter, kreuzwort: Kreuzwort };

@@ -12,9 +12,10 @@ import * as woertle from "./woertle.js";
 import * as wortpfad from "./wortpfad.js";
 import * as treffpunkt from "./treffpunkt.js";
 import * as wortleiter from "./wortleiter.js";
+import * as kreuzwort from "./kreuzwort.js";
 export * from "./core.js";
 
-export const ENGINES = { sudoku, queens, tango, zip, patches, nonogram, hashi, slitherlink, nurikabe, kakuro, woertle, wortpfad, treffpunkt, wortleiter };
+export const ENGINES = { sudoku, queens, tango, zip, patches, nonogram, hashi, slitherlink, nurikabe, kakuro, woertle, wortpfad, treffpunkt, wortleiter, kreuzwort };
 
 export function generate(kind, diff, seed) {
   return ENGINES[kind].generate(diff, seed);
