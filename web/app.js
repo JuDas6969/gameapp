@@ -122,7 +122,7 @@ function Launch(kind) {
   const best = Object.entries(g.best);
   const streak = Stats.streak(kind);
   scrim.append(h("div", { class: "sheet" },
-    h("h2", {}, GAMES[kind].title), h("p", {}, GAMES[kind].rules),
+    h("h2", {}, GAMES[kind].title), h("p", {}, GAMES[kind].subtitle),
     optBox,
     h("div", { style: "font-weight:700;font-size:14px;margin-bottom:6px" }, "Schwierigkeit"), seg,
     best.length ? h("div", { class: "best" }, "Bestzeiten:", best.map(([d, s]) => h("span", {}, `${DIFF_TITLE[d]} ${clock(s)}`))) : null,

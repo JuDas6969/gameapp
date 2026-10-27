@@ -21,8 +21,13 @@ for (const diff of DIFFS) {
     assert(p.diff === diff && p.kind === kind, `${kind} ${diff} meta`);
     switch (kind) {
       case "sudoku":
-        assert(sudoku.countSolutions(clone(p.givens)) === 1, `${kind} ${diff} unique`);
-        assert(sudoku.conflicts(p.solution).size === 0, `${kind} ${diff} solution clean`); break;
+        assert(sudoku.countSolutions(p) === 1, `${kind} ${diff} unique`);
+        assert(sudoku.logicSolvable(p), `${kind} ${diff} logicSolvable`);
+        assert(sudoku.conflicts(p, p.solution).size === 0, `${kind} ${diff} solution clean`);
+        for (const [size, variant] of [["9", "klassisch"], ["9", "killer"], ["6", "jigsaw"], ["9", "fenster"]]) {
+          const q = ENGINES.sudoku.generate(diff, 11, { size, variant });
+          assert(q.n === +size && q.variant === variant && sudoku.countSolutions(q) === 1 && sudoku.logicSolvable(q), `${kind} ${size} ${variant} ${diff}`);
+        } break;
       case "queens": {
         assert(queens.solutions(p.n, p.regions).length === 1, `${kind} ${diff} unique`);
         const qs = new Set(p.solution.map((c, r) => r * 64 + c));

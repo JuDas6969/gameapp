@@ -5,11 +5,21 @@ export const DIFF_TITLE = { leicht: "Leicht", mittel: "Mittel", schwer: "Schwer"
 
 const UNIQUE = "Jedes Rätsel hat genau eine Lösung und ist ohne Raten lösbar.";
 export const GAMES = {
-  sudoku:   { title: "Mini-Sudoku", icon: "#",  subtitle: "6×6 – jede Zahl einmal pro Zeile, Spalte und Block",
-              rules: `Fülle das 6×6-Gitter mit den Zahlen 1 bis 6.
-Jede Zeile, jede Spalte und jeder 2×3-Block enthält jede Zahl genau einmal.
+  sudoku:   { title: "Sudoku", icon: "#",  subtitle: "6×6 oder 9×9 – Klassisch, Diagonal, Puzzle, Killer und mehr",
+              rules: `Fülle das Gitter mit den Zahlen 1 bis 6 (6×6) bzw. 1 bis 9 (9×9).
+Jede Zeile, jede Spalte und jede dick umrandete Region enthält jede Zahl genau einmal.
+Diagonal: Auch beide Diagonalen enthalten jede Zahl einmal.
+Puzzle: Die Regionen sind unregelmäßig geformt statt rechteckiger Blöcke.
+Killer: Die Zahlen in jedem gestrichelten Käfig ergeben die kleine Summe und wiederholen sich im Käfig nicht.
+Gerade/Ungerade: Ein graues Quadrat verlangt eine gerade Zahl, ein grauer Kreis eine ungerade.
+Fenster (nur 9×9): Auch die vier grau hinterlegten 3×3-Fenster enthalten jede Zahl einmal.
 Feld antippen, dann Zahl wählen. ✎ schaltet Notizen ein, ⌫ löscht.
-${UNIQUE}` },
+${UNIQUE}`,
+              options: {
+                size:    { label: "Größe", default: "6", values: [["6", "6×6"], ["9", "9×9"]] },
+                variant: { label: "Variante", default: "klassisch",
+                           values: [["klassisch", "Klassisch"], ["diagonal", "Diagonal"], ["jigsaw", "Puzzle"], ["killer", "Killer"], ["paritaet", "Gerade/Ungerade"], ["fenster", "Fenster"]],
+                           allowed: (v, o) => v !== "fenster" || o.size === "9" } } },
   queens:   { title: "Königinnen", icon: "♛", subtitle: "Eine Königin pro Zeile, Spalte und Farbfeld",
               rules: `Setze in jede Zeile, jede Spalte und jedes Farbfeld genau eine 👑.
 Zwei 👑 dürfen sich nicht berühren – auch nicht diagonal.
