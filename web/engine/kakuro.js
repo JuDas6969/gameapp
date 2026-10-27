@@ -3,10 +3,10 @@
 // Keys are r*64+c of the clue (black) cell. cells = [[r,c],...] of the white run, in reading order.
 import { Rng, resolveDiff, grid, key } from "./core.js";
 
-const SIZE = { leicht: 5, mittel: 7, schwer: 9, experte: 11 };
+const SIZE = { leicht: 5, mittel: 7, schwer: 9, experte: 10 };
 const BLACK_P = { leicht: 0.26, mittel: 0.33, schwer: 0.36, experte: 0.38 };
-const MAX_RUN = { leicht: 4, mittel: 5, schwer: 6, experte: 7 };   // long runs = huge combination sets = slow & ambiguous
-const MIN_WHITE = { leicht: 10, mittel: 20, schwer: 32, experte: 48 };
+const MAX_RUN = { leicht: 4, mittel: 5, schwer: 6, experte: 6 };   // long runs = huge combination sets = slow & ambiguous
+const MIN_WHITE = { leicht: 10, mittel: 20, schwer: 32, experte: 40 };
 const FILL_TRIES = 2;       // solution fillings per pattern before a new pattern is rolled
 const TAU = { leicht: 0.3, mittel: 0.7, schwer: 1.0, experte: 1.3 };   // target avg. log2(#combinations) per run after phase 1 (low = extreme sums = easy)
 
@@ -309,7 +309,129 @@ export function generate(diff, seed) {
       const sol = fillSolution(black, runs, rng); if (!sol) break;
       setSums(runs.across, sol); setSums(runs.down, sol);
       const p = { kind: "kakuro", n, diff, black, across: runs.across, down: runs.down, solution: sol };
-      if (makeUnique(p, rng, TAU[diff], Math.floor(MIN_WHITE[diff] * 0.85))) return p;
+      if (makeUnique(p, rng, TAU[diff], Math.floor(MIN_WHITE[diff] * 0.85)) && logicSolvable(p)) return p;
     }
   }
+}
+
+// ---- explained hints (for the LinkedIn-style hint panel) ------------------------------------------
+const NUM = ["null", "einem", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun"];
+const fields = (k) => (k === 1 ? "einem Feld" : `${NUM[k]} Feldern`);
+const listOr = (ds) => (ds.length <= 1 ? String(ds[0] ?? "") : `${ds.slice(0, -1).join(", ")} oder ${ds[ds.length - 1]}`);
+const LABEL = { across: "waagrechte", down: "senkrechte" };
+const LABEL_M = { across: "waagrechten", down: "senkrechten" };
+
+/** State of run ri in grid g: placed sum, used mask, open cells, rest, remaining combos, allowed digits mask. */
+function runState(idx, g, ri) {
+  const run = idx.runs[ri]; let used = 0, s = 0; const open = [];
+  for (const ck of run.cells) { const v = g[Math.floor(ck / 64)][ck % 64]; if (v) { used |= 1 << (v - 1); s += v; } else open.push(ck); }
+  const rest = run.sum - s;
+  const combos = open.length && rest >= 1 && rest <= 45 ? COMBOS[open.length][rest].filter((m) => !(m & used)) : [];
+  let allowed = 0; for (const m of combos) allowed |= m;
+  return { run, ri, used, s, open, rest, combos, allowed };
+}
+/** "die waagrechte Summe 4 auf zwei Feldern geht nur mit 1+3" etc. */
+function describe(st, short = false) {
+  const { run, open, rest, combos, allowed, s } = st, lab = LABEL[run.dir];
+  const head = s ? `die ${lab} ${short ? "" : "Summe "}${run.sum} braucht noch ${rest} auf ${fields(open.length)}` : `die ${lab} ${short ? "" : "Summe "}${run.sum} auf ${fields(run.len)}`;
+  const sets = combos.map(digitsOf).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const alts = listOr(sets.map((d) => d.join("+")));
+  if (combos.length <= 3) return s ? `${head}, also ${alts}` : `${head} ${short ? "" : "geht "}nur mit ${alts}`;
+  return `${head} erlaubt nur ${listOr(digitsOf(allowed))}`;
+}
+const cap = (t) => t[0].toUpperCase() + t.slice(1);
+
+/**
+ * Next hint with a human explanation. null when complete, else
+ * { type: "fix"|"last"|"cross"|"deep"|"any", r, c, v (digit to enter; 0 for fix = remove), runs:[ri…], extra:[ck…], text }.
+ * text = "Begründung.\nAktion." (German, LinkedIn style).
+ */
+export function explainHint(p, g) {
+  const idx = runIndex(p), n = p.n, at = (ck) => g[Math.floor(ck / 64)][ck % 64];
+  // 1. wrong entries first
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (p.black[r][c] || !g[r][c] || g[r][c] === p.solution[r][c]) continue;
+    const ck = key(r, c), v = g[r][c], runs = idx.of.get(ck);
+    for (const ri of runs) {
+      const run = idx.runs[ri], dup = run.cells.find((o) => o !== ck && at(o) === v);
+      if (dup != null) return { type: "fix", r, c, v: 0, runs: [ri], extra: [dup], text: `Die ${v} kommt im ${LABEL_M[run.dir]} Lauf schon vor – jede Zahl darf in einem Lauf nur einmal stehen.\nEntfernen Sie diesen Eintrag.` };
+    }
+    for (const ri of runs) {
+      const st = runState(idx, g, ri);
+      if (!st.open.length && st.s !== st.run.sum) return { type: "fix", r, c, v: 0, runs: [ri], extra: [], text: `Der ${LABEL_M[st.run.dir]} Lauf ergibt ${st.s} statt ${st.run.sum}.\nEntfernen Sie diesen Eintrag.` };
+    }
+    return { type: "fix", r, c, v: 0, runs: [...runs], extra: [], text: `Dieser Eintrag widerspricht der Lösung: Mit der ${v} an dieser Stelle lässt sich das Rätsel nicht mehr korrekt füllen.\nEntfernen Sie ihn.` };
+  }
+  // 2. a run with exactly one open cell
+  for (let ri = 0; ri < idx.runs.length; ri++) {
+    const st = runState(idx, g, ri);
+    if (st.open.length !== 1) continue;
+    const ck = st.open[0], r = Math.floor(ck / 64), c = ck % 64, v = st.rest;
+    if (v !== p.solution[r][c]) continue;
+    return { type: "last", r, c, v, runs: [...idx.of.get(ck)], extra: [], text: `In diesem Lauf fehlt nur noch eine Zahl: ${st.run.sum}\u00a0−\u00a0${st.s}\u00a0=\u00a0${v}.\nTragen Sie ${v} ein.` };
+  }
+  // 3. intersection of the two runs' possible digits
+  const empties = idx.whites.filter((ck) => !at(ck));
+  if (!empties.length) return null;
+  const info = empties.map((ck) => {
+    const [a, d] = idx.of.get(ck), A = runState(idx, g, a), D = runState(idx, g, d);
+    return { ck, A, D, both: A.allowed & D.allowed };
+  });
+  let best = null;
+  for (const it of info) if (popcount(it.both) === 1) {
+    const score = it.A.combos.length + it.D.combos.length;
+    if (!best || score < best.score) best = { ...it, score };
+  }
+  if (best) {
+    const r = Math.floor(best.ck / 64), c = best.ck % 64, v = p.solution[r][c];
+    if (digitsOf(best.both)[0] === v)
+      return { type: "cross", r, c, v, runs: [best.A.ri, best.D.ri], extra: [], text: `${cap(describe(best.A))}, ${describe(best.D, true)} – gemeinsam bleibt nur die ${v}.\nTragen Sie ${v} ein.` };
+  }
+  // 3b. a digit every combination of a run needs, which fits only one of its open cells
+  for (let ri = 0; ri < idx.runs.length; ri++) {
+    const st = runState(idx, g, ri);
+    if (st.open.length < 2 || !st.combos.length) continue;
+    let must = 511; for (const m of st.combos) must &= m;
+    for (const d of digitsOf(must)) {
+      const bit = 1 << (d - 1), spots = [], others = [];
+      for (const ck of st.open) {
+        const it = info.find((x) => x.ck === ck), perp = it.A.ri === ri ? it.D : it.A;
+        if (perp.allowed & bit) spots.push({ ck, perp }); else others.push(perp);
+      }
+      if (spots.length !== 1) continue;
+      const ck = spots[0].ck, r = Math.floor(ck / 64), c = ck % 64;
+      if (p.solution[r][c] !== d) continue;
+      const other = LABEL[st.run.dir === "across" ? "down" : "across"];
+      return { type: "must", r, c, v: d, runs: [ri, spots[0].perp.ri], extra: others.map((o) => o.run.clue),
+        text: `${cap(describe(st))} – die ${d} muss also hinein. In den anderen freien Feldern lässt die ${other} Summe keine ${d} zu.\nTragen Sie ${d} ein.` };
+    }
+  }
+  // 4. deeper reasoning / fallback: pick the cell with the fewest common candidates
+  const deep = candidates(p, g, true);
+  const pinned = deep ? info.filter((it) => (deep.get(it.ck) || []).length === 1) : [];
+  const pool = pinned.length ? pinned : info;
+  const it = pool.reduce((m, x) => (popcount(x.both) < popcount(m.both) ? x : m));
+  const r = Math.floor(it.ck / 64), c = it.ck % 64, v = p.solution[r][c];
+  const common = digitsOf(it.both);
+  const why = common.length > 1
+    ? `Waagrecht passen hier ${listOr(digitsOf(it.A.allowed))}, senkrecht ${listOr(digitsOf(it.D.allowed))} – gemeinsam also ${listOr(common)}.`
+    : `${cap(describe(it.A))}, ${describe(it.D)}.`;
+  const rest = pinned.length
+    ? ` Die übrigen Zahlen lassen die Summen rundherum nicht mehr zu; es bleibt nur die ${v}.`
+    : ` Nur mit der ${v} lässt sich das Rätsel ohne Widerspruch zu Ende füllen.`;
+  return { type: pinned.length ? "deep" : "any", r, c, v, runs: [it.A.ri, it.D.ri], extra: [], text: `${why}${rest}\nTragen Sie ${v} ein.` };
+}
+
+/** true if the puzzle can be filled from scratch with explainHint's reasoning alone (never the "any" fallback). */
+export function logicSolvable(p) {
+  const g = p.solution.map((row) => row.map(() => 0));
+  for (let i = 0; i < p.n * p.n; i++) {
+    let open = false;
+    for (let r = 0; r < p.n && !open; r++) for (let c = 0; c < p.n; c++) if (!p.black[r][c] && !g[r][c]) { open = true; break; }
+    if (!open) return true;
+    const h = explainHint(p, g);
+    if (!h || h.type === "any" || h.type === "fix") return false;
+    g[h.r][h.c] = h.v;
+  }
+  return false;
 }

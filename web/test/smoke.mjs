@@ -6,7 +6,9 @@ const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/cs
 const server = http.createServer((req, res) => {
   let f = path.join(root, decodeURIComponent(req.url.split("?")[0])); if (f.endsWith("/")) f += "index.html";
   fs.readFile(f, (err, data) => { if (err) { res.writeHead(404); res.end(); return; } res.writeHead(200, { "content-type": types[path.extname(f)] || "application/octet-stream" }); res.end(data); });
-}).listen(4173);
+}).listen(0);
+const PORT = await new Promise((r) => server.on("listening", () => r(server.address().port)));
+const BASE = `http://localhost:${PORT}`;
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ ...devices["iPhone 14"], colorScheme: process.argv.includes("--dark") ? "dark" : "light" });
@@ -14,13 +16,13 @@ const page = await ctx.newPage();
 const errors = []; page.on("pageerror", (e) => errors.push(String(e))); page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
 const shot = (name) => page.screenshot({ path: `/tmp/shots/${name}.png` });
 fs.mkdirSync("/tmp/shots", { recursive: true });
-await page.goto("http://localhost:4173/"); await page.waitForSelector(".card"); await shot("00-home");
+await page.goto(`${BASE}/`); await page.waitForSelector(".card"); await shot("00-home");
 
 // expose puzzle for the test: hook worker messages
 
 const games = ["sudoku", "queens", "tango", "zip", "patches", "nonogram"];
 for (const [i, kind] of games.entries()) {
-  await page.goto("http://localhost:4173/"); await page.waitForSelector(".card");
+  await page.goto(`${BASE}/`); await page.waitForSelector(".card");
   await page.locator(".card").nth(i).click(); await page.waitForSelector(".sheet");
   if (i === 0) await shot("01-sheet");
   await page.locator(".seg button").nth(1).click(); // mittel
@@ -30,7 +32,7 @@ for (const [i, kind] of games.entries()) {
   await shot(`1${i}-${kind}`);
 }
 // play Sudoku via numpad using the solution extracted from the worker reply
-await page.goto("http://localhost:4173/"); await page.waitForSelector(".card");
+await page.goto(`${BASE}/`); await page.waitForSelector(".card");
 // Simplest: generate the same puzzle in-page by intercepting the worker's message through a tiny patch
 await page.evaluate(() => {
   const O = Worker.prototype.postMessage;
@@ -47,7 +49,7 @@ for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) if (!sp.givens[r][c]) {
 await page.waitForSelector(".win", { timeout: 3000 }); await page.waitForTimeout(500); await shot("20-sudoku-win");
 
 // play Zip by dragging along the solution path
-await page.goto("http://localhost:4173/"); await page.waitForSelector(".card");
+await page.goto(`${BASE}/`); await page.waitForSelector(".card");
 await page.evaluate(() => { window.__puzzle = null; const O = Worker.prototype.postMessage; Worker.prototype.postMessage = function (m) { this.addEventListener("message", (e) => { if (e.data.puzzle) window.__puzzle = e.data.puzzle; }, { once: true }); return O.call(this, m); }; });
 await page.locator(".card").nth(3).click(); await page.locator(".btn.primary").click(); await page.waitForSelector(".board svg");
 await page.waitForFunction(() => window.__puzzle);
@@ -60,7 +62,7 @@ await page.mouse.up();
 await page.waitForSelector(".win", { timeout: 3000 }); await page.waitForTimeout(500); await shot("21-zip-win");
 
 // nonogram: tap all filled cells of the solution
-await page.goto("http://localhost:4173/"); await page.waitForSelector(".card");
+await page.goto(`${BASE}/`); await page.waitForSelector(".card");
 await page.evaluate(() => { window.__puzzle = null; const O = Worker.prototype.postMessage; Worker.prototype.postMessage = function (m) { this.addEventListener("message", (e) => { if (e.data.puzzle) window.__puzzle = e.data.puzzle; }, { once: true }); return O.call(this, m); }; });
 await page.locator(".card").nth(5).click(); await page.locator(".seg button").nth(0).click(); await page.locator(".btn.primary").click(); await page.waitForSelector(".board svg");
 await page.waitForFunction(() => window.__puzzle);

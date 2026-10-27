@@ -26,11 +26,8 @@ ${UNIQUE}` },
 Der Pfad besucht jedes Feld genau einmal und darf keine Wand kreuzen.
 Zurückziehen löscht den Pfad bis zu diesem Feld.
 ${UNIQUE}` },
-  patches:  { title: "Flicken", icon: "▦", subtitle: "Teile das Gitter in Rechtecke mit passender Fläche",
-              rules: `Teile das Gitter vollständig in rechteckige und quadratische Flicken.
-Jeder Flicken enthält genau eine Zahl – sie gibt seine Fläche an.
-Von der Zahl aus ziehen spannt einen Flicken auf, Antippen entfernt ihn.
-${UNIQUE}` },
+  patches:  { title: "Flicken", icon: "▦", subtitle: "Fülle das Raster mit Quadraten und Rechtecken",
+              rules: "Vervollständige jede Form, um das Raster auszufüllen. Jeder Flicken ist ein Rechteck mit genau einem Hinweis: Quadrat, hohes Rechteck, breites Rechteck oder beliebig (gestrichelt).\nHat eine Form eine Zahl, muss sie diese Größe haben.\nVon einem Hinweis aus ziehen spannt einen Flicken auf, Antippen entfernt ihn." },
   nonogram: { title: "Nonogramm", icon: "▚", subtitle: "Male das Bild anhand der Zahlenhinweise",
               rules: `Die Zahlen am Rand nennen die Längen der gefüllten Blöcke in jeder Zeile und Spalte – in dieser Reihenfolge.
 Zwischen zwei Blöcken bleibt mindestens ein Feld leer.
@@ -47,7 +44,7 @@ ${UNIQUE}` },
   woertle: { title: "Wörtle", icon: "W", subtitle: "Errate das Wort in 6 Versuchen – 4 bis 7 Buchstaben",
     rules: "Errate das gesuchte deutsche Wort in höchstens 6 Versuchen. Jeder Versuch muss ein gültiges Wort gleicher Länge sein (⏎ schickt ab).\nGrün: Buchstabe stimmt und steht richtig. Gelb: kommt vor, steht aber woanders. Grau: kommt nicht vor.\nLeicht 4, Mittel 5, Schwer 6, Experte 7 Buchstaben. Umlaute sind eigene Buchstaben, kein ß." },
   wortpfad: { title: "Wortpfad", icon: "≈", subtitle: "Ziehe Wörter durch das Buchstabengitter – jedes Feld einmal",
-    rules: "Verbinde benachbarte Buchstaben (auch diagonal) zu Wörtern, indem du einen Pfad durch das Gitter ziehst. Jedes Feld gehört am Ende zu genau einem Wort; die Zeile unten verrät Anzahl und Längen der Wörter.\nEin gültiges Wort bleibt farbig stehen, Tippen auf einen Pfad entfernt ihn. Jede Zerlegung aus gültigen Wörtern zählt." },
+    rules: "Verbinde waagrecht oder senkrecht benachbarte Buchstaben zu Wörtern, indem du einen Pfad durch das Gitter ziehst. Graue Felder sind gesperrt. Jedes Buchstabenfeld gehört am Ende zu genau einem Wort; die Kacheln unter dem Gitter zeigen Anzahl und Längen der Wörter.\nEin gültiges Wort bleibt farbig stehen, Tippen auf einen Pfad entfernt ihn. Jede Zerlegung aus gültigen Wörtern zählt." },
   treffpunkt: { title: "Treffpunkt", icon: "◎", subtitle: "Fünf Wörter, eine Kategorie – je früher, desto besser",
     rules: "Fünf Wörter haben etwas gemeinsam. Das erste siehst du sofort – rate die Kategorie!\nJeder Fehlversuch deckt das nächste Wort auf. Du hast fünf Versuche; je weniger Wörter du brauchst, desto besser.\nSchreibweise ist egal, Alternativen und kleine Tippfehler werden erkannt." },
   wortleiter: { title: "Wortleiter", icon: "≡", subtitle: "Fünf Wörter erraten, zur Leiter sortieren, Anfang und Ende finden",

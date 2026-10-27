@@ -313,5 +313,10 @@ function iosInstallTip() {
   document.body.append(tip);
 }
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").then((reg) => reg.update()).catch(() => {});
+  // a new version took over → reload once so the player sees it immediately
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (!reloaded && !document.querySelector(".game")) { reloaded = true; location.reload(); } });
+}
 Home();

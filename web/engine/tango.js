@@ -107,7 +107,7 @@ export function generate(diff, seed) {
     if (givens <= TARGET[diff]) break;
     const r = Math.floor(i / N), c = i % N, v = g[r][c];
     g[r][c] = -1;
-    if (countSolutions(clone(g), constraints) === 1) givens--; else g[r][c] = v;
+    if (countSolutions(clone(g), constraints) === 1 && logicSolvable({ constraints }, g)) givens--; else g[r][c] = v;
   }
   return { kind: "tango", n: N, diff, givens: g, solution: sol, constraints };
 }
@@ -132,4 +132,15 @@ export function explain(p, g) {
     }
   }
   return best;
+}
+
+/** true if g can be completed using only deduce()'s explainable rules (no trial and error). */
+export function logicSolvable(p, g0) {
+  const g = clone(g0);
+  for (let i = 0; i < N * N; i++) {
+    if (!g.some((row) => row.includes(-1))) return true;
+    const d = deduce(p, g); if (!d) return false;
+    g[d.r][d.c] = d.v;
+  }
+  return !g.some((row) => row.includes(-1));
 }

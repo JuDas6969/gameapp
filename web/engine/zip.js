@@ -119,6 +119,117 @@ export function hintStep(p, path, maxSteps = 6) {
   return { type: "extend", cells, target };
 }
 
+// ---------- hint reasoning (local logic a human can follow) ----------
+function ctxOf(p) {
+  const n = p.n, walls = new Set(p.walls), adj = [], wp = new Int32Array(n * n);
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    const a = [];
+    for (const [dr, dc] of DIRS4) { const rr = r + dr, cc = c + dc; if (rr >= 0 && cc >= 0 && rr < n && cc < n && !walls.has(edgeKey(r, c, rr, cc))) a.push(rr * n + cc); }
+    adj.push(a);
+  }
+  for (const [cell, num] of Object.entries(p.waypoints)) wp[cell] = num;
+  return { n, adj, wp, k: p.maxNumber, total: n * n };
+}
+/** Is the state (visited cells, head) still completable by local criteria? null = ok, else { kind: "cut"|"dead", cell }. */
+function stateProblem(ctx, visited, head) {
+  const { adj, wp, k, total } = ctx;
+  let remaining = 0; for (let i = 0; i < total; i++) if (!visited[i]) remaining++;
+  if (!remaining) return null;
+  for (let cell = 0; cell < total; cell++) {
+    if (visited[cell]) continue;
+    let free = 0;
+    for (const y of adj[cell]) if (y === head || !visited[y]) free++;
+    if (free < (wp[cell] === k ? 1 : 2)) return { kind: "dead", cell };
+  }
+  const seen = new Uint8Array(total), stack = [head]; seen[head] = 1; let cnt = 0;
+  while (stack.length) { const x = stack.pop(); for (const y of adj[x]) if (!visited[y] && !seen[y]) { seen[y] = 1; stack.push(y); cnt++; } }
+  if (cnt !== remaining) { for (let i = 0; i < total; i++) if (!visited[i] && !seen[i]) return { kind: "cut", cell: i }; }
+  return null;
+}
+function legalMoves(ctx, visited, head, nextWP, depth) {
+  const { adj, wp, k, total } = ctx;
+  if (wp[head] === k) return [];
+  return adj[head].filter((y) => !visited[y] && (wp[y] === 0 || wp[y] === nextWP) && !(wp[y] === k && depth + 1 !== total) && !(wp[y] === 0 && nextWP === k + 1));
+}
+/** Count local-logic-valid routes from head to the waypoint cell `goal` (limit 2, node budget). -1 = budget exceeded. */
+function segmentRoutes(ctx, visited, head, goal, nextWP, depth, budget = 25000) {
+  let nodes = 0, found = 0, over = false;
+  const rec = (cur, d) => {
+    if (found >= 2 || over) return;
+    if (++nodes > budget) { over = true; return; }
+    for (const y of legalMoves(ctx, visited, cur, nextWP, d)) {
+      if (ctx.wp[y] && y !== goal) continue;
+      visited[y] = 1;
+      if (!stateProblem(ctx, visited, y)) { if (y === goal) found++; else rec(y, d + 1); }
+      visited[y] = 0;
+      if (found >= 2 || over) return;
+    }
+  };
+  rec(head, depth);
+  return over ? -1 : found;
+}
+const cellKind = (n, cell) => {
+  const r = Math.floor(cell / n), c = cell % n, er = r === 0 || r === n - 1, ec = c === 0 || c === n - 1;
+  return er && ec ? "Eckfeld" : er || ec ? "Randfeld" : "Feld";
+};
+/**
+ * Hint with reasoning. Returns null (solved) or
+ * { keep, cells, target, targetCell, cut, cutReason, text } – keep = how much of `path` stays, cells = cells to append.
+ */
+export function explainHint(p, path, maxSteps = 6) {
+  const step = hintStep(p, path, maxSteps);
+  if (!step) return null;
+  const n = p.n, ctx = ctxOf(p), idx = ([r, c]) => r * n + c;
+  let keep = path.length, cutWhy = null;
+  if (step.type === "cut") {
+    keep = step.keep;
+    // why was the deviating path wrong? check its local state
+    const vis = new Uint8Array(n * n); path.forEach((x) => { vis[idx(x)] = 1; });
+    const prob = stateProblem(ctx, vis, idx(path[path.length - 1]));
+    cutWhy = prob ? `Ab dem gestreiften Feld führte dein Pfad in eine Sackgasse – ein ${cellKind(n, prob.cell)} wäre ${prob.kind === "dead" ? "nicht mehr zu durchqueren" : "abgeschnitten"}.`
+      : "Ab dem gestreiften Feld führte dein Pfad in eine Sackgasse – so lassen sich nicht mehr alle Felder der Reihe nach verbinden.";
+  }
+  const ext = step.type === "cut" ? hintStep(p, path.slice(0, keep), maxSteps) : step;
+  const cells = ext ? ext.cells : [], target = ext ? ext.target : null;
+  // reasoning from the head of the kept (correct) prefix
+  const prefix = p.solution.slice(0, Math.max(keep, 1));
+  const vis = new Uint8Array(n * n); prefix.forEach((x) => { vis[idx(x)] = 1; });
+  const head = idx(prefix[prefix.length - 1]);
+  let nextWP = 1; for (const x of prefix) if (ctx.wp[idx(x)]) nextWP = ctx.wp[idx(x)] + 1;
+  const hw = ctx.wp[head], from = hw ? `Von der ${hw}` : "Vom Ende deines Pfads";
+  let why = null;
+  const solNext = prefix.length < p.solution.length ? idx(p.solution[prefix.length]) : null;
+  if (solNext != null) {
+    const moves = legalMoves(ctx, vis, head, nextWP, prefix.length);
+    // 1) segment to the next number is locally unique
+    if (target != null && moves.length > 1) {
+      const goal = idx(cells[cells.length - 1]);
+      if (segmentRoutes(ctx, vis, head, goal, nextWP, prefix.length) === 1) why = `${from} gibt es nur einen Weg zur ${target}, der kein Feld abschneidet.`;
+    }
+    // 2) only one free neighbour
+    if (!why && moves.length === 1) why = `${from} aus ist nur ein Schritt möglich.`;
+    // 3) the neighbour would become a dead end if skipped now
+    if (!why) {
+      const free = (y) => ctx.adj[y].filter((z) => z !== head && !vis[z]).length;
+      if (ctx.wp[solNext] !== ctx.k && free(solNext) <= 1 && moves.includes(solNext)) {
+        const kind = cellKind(n, solNext);
+        why = `Das ${kind} daneben hat sonst nur noch einen freien Nachbarn – ohne diesen Schritt würde es zur Sackgasse.`;
+      }
+    }
+    // 4) every other move fails the local check immediately
+    if (!why && moves.length > 1) {
+      const allBad = moves.filter((m) => m !== solNext).every((m) => { vis[m] = 1; const bad = !!stateProblem(ctx, vis, m); vis[m] = 0; return bad; });
+      if (allBad) why = "Jeder andere Schritt würde ein Feld abschneiden oder eine Sackgasse erzeugen.";
+    }
+  }
+  if (!why) why = "Dieser Weg lässt alle übrigen Felder erreichbar.";
+  const targetCell = target != null ? cells[cells.length - 1] : null;
+  const action = step.type === "cut" ? "Wir haben ihn bis zum ersten Fehler gelöscht und um ein Stück verlängert."
+    : target != null ? `Wir haben deinen Pfad bis zur ${target} erweitert.` : "Wir haben deinen Pfad erweitert.";
+  const text = step.type === "cut" ? `${cutWhy}\n${action}` : `${why}\n${action}`;
+  return { keep, cells, target, targetCell, cut: step.type === "cut", reason: why, text };
+}
+
 export function generate(diff, seed) {
   const rng = new Rng(seed); diff = resolveDiff(diff, rng);
   const n = SIZE[diff];

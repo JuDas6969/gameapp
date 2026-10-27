@@ -34,10 +34,15 @@ for (const diff of DIFFS) {
         const s = new zip.Solver(p.n, new Set(p.walls));
         assert(s.countPaths(new Map(Object.entries(p.waypoints).map(([k, v]) => [Number(k), v]))) === 1, `${kind} ${diff} unique`);
         assert(zip.isSolved(p, p.solution), `${kind} ${diff} solution valid`);
-        assert(zip.stepError(p, [], ...p.solution[0]) === null && zip.stepError(p, [], ...p.solution[1]) !== null, `${kind} ${diff} stepError`); break; }
-      case "patches":
-        assert(patches.countSolutions(p.n, p.clues) === 1, `${kind} ${diff} unique`);
-        assert(patches.isSolved(p, p.solution), `${kind} ${diff} solution valid`); break;
+        assert(zip.stepError(p, [], ...p.solution[0]) === null && zip.stepError(p, [], ...p.solution[1]) !== null, `${kind} ${diff} stepError`);
+        let path = []; for (let i = 0; i < 200; i++) { const hz = zip.explainHint(p, path); if (!hz) break; path = path.slice(0, hz.keep).concat(hz.cells); }
+        assert(zip.isSolved(p, path), `${kind} ${diff} hints solve`); break; }
+      case "patches": {
+        assert(patches.countSolutions(p.n, p.clues, 2, p.shapes) === 1, `${kind} ${diff} unique`);
+        assert(patches.isSolved(p, p.solution), `${kind} ${diff} solution valid`);
+        let rects = [p.solution[0].w > 1 ? { ...p.solution[0], w: p.solution[0].w - 1 } : { ...p.solution[0], h: p.solution[0].h + 1 }].filter((rc) => patches.isValid(p, rc));
+        for (let i = 0; i < 300; i++) { const hp = patches.hintPlan(p, rects); if (!hp) break; rects = hp.type === "wrong" ? rects.filter((x) => x !== hp.rect) : rects.concat([hp.rect]); }
+        assert(patches.isSolved(p, rects), `${kind} ${diff} hints solve`); break; }
       case "nonogram": {
         const g = p.solution.map((row) => row.map((v) => (v ? 1 : 0)));
         assert(nonogram.isSolved(p, g), `${kind} ${diff} solution`);

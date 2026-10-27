@@ -115,8 +115,24 @@ export function generate(diff, seed) {
   for (;;) {
     const q = randomQueens(n, rng); if (!q) continue;
     const reg = growRegions(n, q, rng);
-    if (repair(n, reg, q, rng)) return { kind: "queens", n, diff, regions: reg, solution: q };
+    if (!repair(n, reg, q, rng)) continue;
+    const p = { kind: "queens", n, diff, regions: reg, solution: q };
+    if (logicSolvable(p)) return p;     // LinkedIn-like: every step must be explainable by the hint rules
   }
+}
+/** true if the puzzle can be solved from scratch using only nextHint's logical rules (never the fallback). */
+export function logicSolvable(p) {
+  const n = p.n, marks = Array.from({ length: n }, () => Array(n).fill(0));
+  for (let step = 0; step < n * n * 2; step++) {
+    const h = nextHint(p, marks);
+    if (!h) return true;
+    if (h.kind === "fallback" || h.kind === "wrongQueen" || h.kind === "wrongX") return false;
+    if (h.kind === "single") marks[h.cell[0]][h.cell[1]] = 2;
+    else if (h.kind === "confine") for (const [r, c] of h.strike) marks[r][c] = 1;
+    else if (h.kind === "blocks") marks[h.cell[0]][h.cell[1]] = 1;
+    else return false;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------------------------

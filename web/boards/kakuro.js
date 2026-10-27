@@ -1,14 +1,13 @@
 import { S, svgEl, h, base, txt } from "./_shared.js";
 import * as kakuro from "../engine/kakuro.js";
 
-const HINT_WINDOW = 20000;
 const key = (r, c) => r * 64 + c;
 
 export function Kakuro(p, { onSolved, tools, haptic }) {
   const n = p.n, g = p.solution.map((row) => row.map(() => 0));
   const b = base(n);
   const idx = kakuro.runIndex(p);                       // runs, of: cellKey → [acrossRun, downRun]
-  let sel = null, hintTimer = null, hintHl = null, pending = null, mistakes = 0, solved = false;
+  let sel = null, mistakes = 0, solved = false, lit = null;   // lit: white cells tinted while a hint spotlight is shown
   const undoStack = [];
   const rects = new Map(), texts = new Map(), sumTexts = new Map();   // keyed by cell key; sumTexts: runIdx → text
 
@@ -40,17 +39,18 @@ export function Kakuro(p, { onSolved, tools, haptic }) {
   const snapshot = () => g.map((row) => row.slice());
   const restore = (s) => { for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) g[r][c] = s[r][c]; };
   const push = () => { undoStack.push(snapshot()); if (undoStack.length > 200) undoStack.shift(); };
-  const dropHint = () => { pending = null; hintHl = null; clearTimeout(hintTimer); for (const rc of rects.values()) rc.classList.remove("hintcell"); };
+  const clearSpotlight = () => { b.clearSpotlight(); if (lit) { lit = null; draw(); } };
+  const dropHint = clearSpotlight;
+  // dark mode draws clue cells light, so tint the focused white cells to make the spotlight read correctly
+  const spotlight = (spec = {}) => { b.spotlight(spec); lit = new Set([...(spec.focus || []), ...(spec.target || [])].map(([r, c]) => key(r, c))); draw(); };
 
   const draw = () => {
     const bad = kakuro.conflicts(p, g);
-    let selRuns = null;
-    if (hintHl) selRuns = hintHl.runs;
-    else if (sel) selRuns = idx.of.get(key(sel[0], sel[1]));
+    const selRuns = sel ? idx.of.get(key(sel[0], sel[1])) : null;
     const runCells = new Set(); if (selRuns) for (const ri of selRuns) for (const ck of idx.runs[ri].cells) runCells.add(ck);
     for (const ck of idx.whites) {
       const v = at(ck); let fill = "transparent";
-      if (hintHl) { if (hintHl.main === ck) fill = "var(--accent-soft)"; else if (runCells.has(ck)) fill = "rgba(127,127,127,.18)"; }
+      if (lit) { if (lit.has(ck)) fill = "rgba(31,122,255,.16)"; }
       else if (sel) {
         const sk = key(sel[0], sel[1]), sv = at(sk);
         if (sk === ck) fill = "var(--accent-soft)";
@@ -62,7 +62,7 @@ export function Kakuro(p, { onSolved, tools, haptic }) {
     }
     sumTexts.forEach((t, ri) => t.setAttribute("style", selRuns && selRuns.includes(ri) ? "fill:var(--accent)" : "fill:var(--bg)"));
     // helper line: remaining sum of the selected cell's runs
-    if (sel && !hintHl) {
+    if (sel) {
       const [a, d] = idx.of.get(key(sel[0], sel[1]));
       const part = (ri, label) => { const { run, rest, open } = runInfo(ri); return `${label} ${run.sum}: ${open ? `noch ${rest} auf ${open} Feld${open > 1 ? "er" : ""}` : rest === 0 ? "✓" : "falsch"}`; };
       setMsg(`${part(a, "Waagrecht")} · ${part(d, "Senkrecht")}`);
@@ -97,38 +97,30 @@ export function Kakuro(p, { onSolved, tools, haptic }) {
   const pad = h("div", { class: "numpad" }, [1, 2, 3, 4, 5, 6, 7, 8, 9].map((v) => h("button", { onclick: () => enter(v) }, String(v))), h("button", { "aria-label": "Löschen", onclick: () => enter(0) }, "⌫"));
   tools.replaceChildren(bar, msgEl, pad);
 
-  // ---- two-stage hint: 1. highlight + explain, 2. (within 20 s) fill in --------------------------
+  // ---- LinkedIn-style hint: { text, focus (both runs + sums), target, strike, apply } ------------
+  const rc2 = (ck) => [Math.floor(ck / 64), ck % 64];
   const hint = () => {
     if (solved) return null;
-    const step = kakuro.findHint(p, g);
+    const step = kakuro.explainHint(p, g);
     if (!step) return null;
-    const { r, c, v } = step, ck = key(r, c), pos = `Zeile ${r}, Spalte ${c}`;
-    const same = pending && pending.ck === ck && pending.v === v && Date.now() - pending.at < HINT_WINDOW;
-    if (!same) {
-      clearTimeout(hintTimer); for (const rc of rects.values()) rc.classList.remove("hintcell");
-      hintHl = { main: ck, runs: idx.of.get(ck) }; sel = null;
-      pending = { ck, v, at: Date.now() };
-      hintTimer = setTimeout(() => { if (hintHl && hintHl.main === ck) { hintHl = null; pending = null; draw(); } }, HINT_WINDOW);
-      draw();
-      let msg;
-      if (step.type === "fix") msg = `${pos}: die ${step.old} stimmt hier nicht.`;
-      else if (step.type === "naked") msg = `${pos}: zu beiden Summen passt nur eine Ziffer.`;
-      else if (step.type === "deep") msg = `${pos}: aus den Summen rundherum bleibt nur eine Ziffer.`;
-      else msg = `${pos}: schau dir dieses Feld an.`;
-      return `${msg} Noch ein Tipp trägt sie ein.`;
-    }
-    dropHint(); push();
-    g[r][c] = v; sel = [r, c]; draw();
-    const rc = rects.get(ck); rc.classList.add("hintcell");
-    hintTimer = setTimeout(() => { rc.classList.remove("hintcell"); draw(); }, 1200);
-    let msg;
-    if (step.type === "fix") msg = `Die ${step.old} in ${pos} war falsch – richtig ist die ${v}.`;
-    else if (step.type === "naked") msg = `${pos}: nur die ${v} passt zu beiden Summen.`;
-    else if (step.type === "deep") msg = `${pos}: aus den Summen rundherum bleibt nur die ${v}.`;
-    else msg = `${pos}: hier kommt die ${v} hin.`;
-    checkSolved();
-    return msg;
+    const { r, c, v } = step, cells = new Map();
+    const add = (ck) => cells.set(ck, rc2(ck));
+    for (const ri of step.runs) { const run = idx.runs[ri]; add(run.clue); run.cells.forEach(add); }
+    for (const ck of step.extra) add(ck);
+    cells.delete(key(r, c));
+    sel = null; draw();
+    const isFix = step.type === "fix";
+    return {
+      text: step.text,
+      focus: [...cells.values()],
+      target: isFix ? [] : [[r, c]],
+      strike: isFix ? [[r, c]] : [],
+      apply: () => {
+        if (solved) return;
+        push(); g[r][c] = v; sel = [r, c]; haptic(); draw(); checkSolved();
+      },
+    };
   };
 
-  draw(); return { ...b, hint, undo, canUndo, clear, metrics };
+  draw(); return { ...b, spotlight, clearSpotlight, hint, undo, canUndo, clear, metrics };
 }

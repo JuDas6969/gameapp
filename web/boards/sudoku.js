@@ -1,10 +1,12 @@
 import { S, svgEl, h, base, txt } from "./_shared.js";
 import * as sudoku from "../engine/sudoku.js";
 
-const UNIT_LABEL = { Zeile: "in dieser Zeile", Spalte: "in dieser Spalte", Block: "in diesem Block" };
+const UNIT_THIS = { Zeile: "In dieser Zeile", Spalte: "In dieser Spalte", Block: "In dieser Region" };
+const UNIT_SAME = { Zeile: "derselben Zeile", Spalte: "derselben Spalte", Block: "derselben Region" };
+const UNIT_BLOCKED = { Zeile: "Spalte oder Region", Spalte: "Zeile oder Region", Block: "Zeile oder Spalte" };
+const listOr = (ds) => (ds.length <= 1 ? String(ds[0] ?? "") : `${ds.slice(0, -1).join(", ")} oder ${ds[ds.length - 1]}`);
 const SETTINGS_KEY = "raetsel.sudoku.settings";
 const DEFAULTS = { autoCheck: true, remaining: true, avail: false };
-const HINT_WINDOW = 20000;
 
 const loadSettings = () => {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") }; } catch { return { ...DEFAULTS }; }
@@ -14,7 +16,7 @@ const saveSettings = (s) => { try { localStorage.setItem(SETTINGS_KEY, JSON.stri
 export function Sudoku(p, { onSolved, tools, haptic }) {
   const n = 6, g = p.givens.map((r) => r.slice());
   const b = base(n, { strong: [2, 3] });
-  let sel = null, selDigit = 0, pencil = false, hintTimer = null, hintHl = null, pending = null, mistakes = 0, solved = false;
+  let sel = null, selDigit = 0, pencil = false, mistakes = 0, solved = false, showSettings = false;
   const settings = loadSettings();
   const notes = Array.from({ length: n * n }, () => new Set());
   const undoStack = [];
@@ -27,7 +29,7 @@ export function Sudoku(p, { onSolved, tools, haptic }) {
     notes.forEach((set, i) => { set.clear(); for (const d of s.notes[i]) set.add(d); });
   };
   const push = () => { undoStack.push(snapshot()); if (undoStack.length > 200) undoStack.shift(); };
-  const dropHint = () => { pending = null; hintHl = null; clearTimeout(hintTimer); rects.forEach((x) => x.classList.remove("hintcell")); };
+  const dropHint = () => b.clearSpotlight();
 
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
     const rc = svgEl("rect", { x: c * S, y: r * S, width: S, height: S, fill: "transparent" }); b.layers.cells.append(rc); rects.push(rc);
@@ -53,10 +55,7 @@ export function Sudoku(p, { onSolved, tools, haptic }) {
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
       const i = r * n + c, v = g[r][c], given = p.givens[r][c] !== 0;
       let fill = "transparent";
-      if (hintHl) {
-        if (hintHl.main === i) fill = "var(--accent-soft)";
-        else if (hintHl.cells.has(i)) fill = "rgba(127,127,127,.18)";
-      } else if (avail) {
+      if (avail) {
         if (!v && sudoku.valid(g, r, c, selDigit)) fill = "var(--accent-soft)";
         else if (v === selDigit) fill = "rgba(127,127,127,.18)";
       } else if (sel) {
@@ -75,12 +74,15 @@ export function Sudoku(p, { onSolved, tools, haptic }) {
     digitBtns.forEach((btn, idx) => {
       const v = idx + 1, left = 6 - k[v];
       btn.disabled = left <= 0 && selDigit !== v;
-      btn.lastChild.textContent = settings.remaining ? String(Math.max(0, left)) : "";
-      btn.lastChild.style.visibility = settings.remaining ? "" : "hidden";
+      btn.lastChild.textContent = settings.remaining && left > 0 ? String(left) : "";
       setPressed(btn, selDigit === v);
     });
-    setPressed(pencilBtn, pencil);
+    pencilState.textContent = pencil ? "An" : "Aus";
+    pencilState.style.background = pencil ? "var(--accent)" : "var(--line)";
+    pencilState.style.color = pencil ? "#fff" : "var(--ink)";
+    pencilBtn.setAttribute("aria-pressed", String(pencil));
     undoBtn.disabled = !undoStack.length;
+    setPressed(gearBtn, showSettings); settingsRow.style.display = showSettings ? "flex" : "none";
     for (const [key, btn] of Object.entries(settingBtns)) setPressed(btn, settings[key]);
   };
   const setPressed = (btn, on) => {
@@ -136,57 +138,61 @@ export function Sudoku(p, { onSolved, tools, haptic }) {
   };
   const metrics = () => ({ line: `${mistakes} Fehler`, mistakes });
 
-  const digitBtns = [1, 2, 3, 4, 5, 6].map((v) => h("button", { style: "padding:8px 0;display:flex;flex-direction:column;align-items:center;line-height:1.1", onclick: () => enter(v) },
-    h("span", {}, String(v)), h("span", { style: "font-size:10px;font-weight:600;color:var(--muted);min-height:12px" }, "")));
-  const pencilBtn = h("button", { title: "Notizen", "aria-label": "Notizen-Modus", onclick: () => { pencil = !pencil; haptic(); draw(); } }, "✎");
-  const pad = h("div", { class: "numpad", style: "grid-template-columns:repeat(8,1fr)" }, digitBtns, h("button", { onclick: () => enter(0) }, "⌫"), pencilBtn);
-  const undoBtn = h("button", { title: "Rückgängig", "aria-label": "Rückgängig", onclick: undo }, "↶");
-  const clearBtn = h("button", { onclick: clear }, "Löschen");
+  // ---- tools (LinkedIn layout): [✎ Notizen An/Aus · ⚙] above a 4×2 numpad 1 2 3 Löschen / 4 5 6 Rückgängig.
+  // DOM order keeps the six digit buttons first (smoke test clicks .numpad button 0–5); placement via grid-row/column.
+  const cellBtn = "position:relative;padding:12px 0;font-size:22px;font-weight:700";
+  const digitBtns = [1, 2, 3, 4, 5, 6].map((v) => h("button", { "aria-label": `Ziffer ${v}`, style: `${cellBtn};grid-row:${v > 3 ? 2 : 1};grid-column:${((v - 1) % 3) + 1}`, onclick: () => enter(v) },
+    h("span", {}, String(v)),
+    h("span", { "aria-hidden": "true", style: "position:absolute;top:4px;right:7px;font-size:11px;font-weight:700;line-height:1;color:var(--muted);font-variant-numeric:tabular-nums" }, "")));
+  const sideBtn = "padding:12px 0;font-size:14px;font-weight:600;grid-column:4;display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.1";
+  const eraseBtn = h("button", { "aria-label": "Feld löschen", style: `${sideBtn};grid-row:1`, onclick: () => enter(0) }, h("span", { style: "font-size:18px" }, "⌫"), h("span", { style: "font-size:11px" }, "Löschen"));
+  const undoBtn = h("button", { "aria-label": "Rückgängig", style: `${sideBtn};grid-row:2`, onclick: undo }, h("span", { style: "font-size:18px" }, "↶"), h("span", { style: "font-size:11px" }, "Rückgängig"));
+  const pad = h("div", { class: "numpad", style: "grid-template-columns:repeat(4,1fr);grid-template-rows:auto auto" }, digitBtns, eraseBtn, undoBtn);
+  const pencilState = h("span", { style: "margin-left:8px;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700" }, "Aus");
+  const pencilBtn = h("button", { "aria-label": "Notizen-Modus", style: "display:flex;align-items:center;border:none;background:none;padding:8px 4px", onclick: () => { pencil = !pencil; haptic(); draw(); } },
+    h("span", { style: "font-size:16px;margin-right:6px" }, "✎"), h("span", {}, "Notizen"), pencilState);
+  const gearBtn = h("button", { title: "Einstellungen", "aria-label": "Einstellungen", style: "padding:6px 10px;font-size:16px", onclick: () => { showSettings = !showSettings; haptic(); draw(); } }, "⚙");
   const settingBtns = {};
-  const toggle = (key, label, title) => settingBtns[key] = h("button", { title, "aria-label": title, style: "font-size:12px;padding:8px 8px;white-space:nowrap", onclick: () => { settings[key] = !settings[key]; saveSettings(settings); if (!settings.avail) selDigit = 0; haptic(); draw(); } }, label);
+  const toggle = (key, label, title) => settingBtns[key] = h("button", { title, "aria-label": title, style: "font-size:12px;padding:7px 9px;white-space:nowrap", onclick: () => { settings[key] = !settings[key]; saveSettings(settings); if (!settings.avail) selDigit = 0; haptic(); draw(); } }, label);
   toggle("autoCheck", "Auto-Check", "Auto-Check: falsche Eingaben sofort rot markieren");
-  toggle("remaining", "Zähler", "Restzähler: unter jeder Ziffer zeigen, wie oft sie noch fehlt");
-  toggle("avail", "Felder", "Mögliche Felder: Ziffer ohne Zelle antippen hebt alle passenden Felder hervor");
-  const bar = h("div", { style: "flex:1 0 100%;display:flex;gap:6px;justify-content:center;flex-wrap:wrap" }, undoBtn, clearBtn, Object.values(settingBtns));
-  tools.replaceChildren(bar, pad);
+  toggle("remaining", "Restzähler", "Restzähler: an jeder Ziffer zeigen, wie oft sie noch fehlt");
+  toggle("avail", "Mögliche Felder", "Mögliche Felder: Ziffer ohne Zelle antippen hebt alle passenden Felder hervor");
+  const settingsRow = h("div", { style: "flex:1 0 100%;display:flex;gap:6px;justify-content:center;flex-wrap:wrap" }, Object.values(settingBtns));
+  const bar = h("div", { style: "flex:1 0 100%;display:flex;align-items:center;justify-content:space-between;max-width:520px;margin:0 auto" }, pencilBtn, gearBtn);
+  tools.replaceChildren(bar, settingsRow, pad);
 
+  // ---- LinkedIn-style hint: { text: "Warum.\nWas.", focus, target, strike, apply } ----------------------
   const hint = () => {
+    if (solved) return null;
     const step = sudoku.findHint(g, p.solution, p.givens);
     if (!step) return null;
-    const { r, c, v } = step, i = r * n + c;
-    const pos = `Zeile ${r + 1}, Spalte ${c + 1}`;
-    const same = pending && pending.r === r && pending.c === c && pending.v === v && Date.now() - pending.at < HINT_WINDOW;
-    if (!same) {
-      // Stufe 1: zeigen + begründen
-      clearTimeout(hintTimer); rects.forEach((x) => x.classList.remove("hintcell"));
-      const units = sudoku.units(r, c), cells = new Set();
-      const add = (list) => { for (const [rr, cc] of list) cells.add(rr * n + cc); };
-      if (step.type === "hidden") add(units[step.unit]);
-      else if (step.type === "naked") { add(units.Zeile); add(units.Spalte); add(units.Block); }
-      hintHl = { main: i, cells }; sel = null; selDigit = 0;
-      pending = { r, c, v, at: Date.now() };
-      hintTimer = setTimeout(() => { if (hintHl && hintHl.main === i) { hintHl = null; pending = null; draw(); } }, HINT_WINDOW);
-      draw();
-      let msg;
-      if (step.type === "fix") msg = `${pos}: die ${step.old} stimmt hier nicht.`;
-      else if (step.type === "naked") msg = `${pos}: Zeile, Spalte und Block lassen nur eine Ziffer zu.`;
-      else if (step.type === "hidden") msg = `${pos}: eine Ziffer geht ${UNIT_LABEL[step.unit]} nur noch hier.`;
-      else msg = `${pos}: schau dir dieses Feld an.`;
-      return `${msg} Noch ein Tipp trägt sie ein.`;
+    const { r, c, v } = step, U = sudoku.units(r, c);
+    const notSelf = (list) => list.filter(([rr, cc]) => rr !== r || cc !== c);
+    sel = null; selDigit = 0; draw();
+    if (step.type === "fix") {
+      const hits = sudoku.clashes(g, r, c), old = step.old;
+      const why = hits.length
+        ? `Die ${old} kollidiert mit der ${old} in ${[...new Set(hits.map((x) => UNIT_SAME[x.unit]))].join(" und ")} – jede Zahl darf in Zeile, Spalte und Region nur einmal vorkommen.`
+        : `Dieser Eintrag widerspricht der Lösung: Mit der ${old} an dieser Stelle lässt sich das Rätsel nicht mehr widerspruchsfrei lösen.`;
+      return { text: `${why}\nEntfernen Sie ihn.`, focus: hits.map((x) => [x.r, x.c]), strike: [[r, c]],
+        apply: () => { if (solved) return; push(); g[r][c] = 0; sel = [r, c]; haptic(); draw(); } };
     }
-    // Stufe 2: eintragen
-    dropHint(); push();
-    place(r, c, v); sel = [r, c]; draw();
-    const rc = rects[i];
-    rc.classList.add("hintcell");
-    hintTimer = setTimeout(() => { rc.classList.remove("hintcell"); draw(); }, 1200);
-    let msg;
-    if (step.type === "fix") msg = `Die ${step.old} in ${pos} war falsch – richtig ist die ${v}.`;
-    else if (step.type === "naked") msg = `${pos}: nur die ${v} passt.`;
-    else if (step.type === "hidden") msg = `${pos}: die ${v} geht ${UNIT_LABEL[step.unit]} nur hier.`;
-    else msg = `${pos}: hier kommt die ${v} hin.`;
-    checkSolved();
-    return msg;
+    let text, focus;
+    if (step.type === "naked") {
+      text = `In der sich kreuzenden Zeile, Spalte und Region ist ${v} die einzige verbleibende Option.\nTragen Sie ${v} in die hervorgehobene Zelle ein.`;
+      focus = notSelf([...U.Zeile, ...U.Spalte, ...U.Block]);
+    } else if (step.type === "hidden") {
+      text = `${UNIT_THIS[step.unit]} kann die ${v} nur noch in der hervorgehobenen Zelle stehen – alle anderen freien Felder sind durch eine ${v} in ihrer ${UNIT_BLOCKED[step.unit]} blockiert.\nTragen Sie ${v} ein.`;
+      focus = [...notSelf(U[step.unit]), ...sudoku.blockers(g, U[step.unit], v, r, c)];
+    } else {
+      const cands = sudoku.candidates(g, r, c), others = cands.filter((d) => d !== v);
+      text = others.length
+        ? `Für dieses Feld lassen Zeile, Spalte und Region nur noch ${listOr(cands)} zu. Mit ${others.length > 1 ? "den anderen Zahlen" : `der ${others[0]}`} lässt sich das Rätsel nicht widerspruchsfrei lösen – es bleibt die ${v}.\nTragen Sie ${v} ein.`
+        : `In der sich kreuzenden Zeile, Spalte und Region ist ${v} die einzige verbleibende Option.\nTragen Sie ${v} ein.`;
+      focus = notSelf([...U.Zeile, ...U.Spalte, ...U.Block]);
+    }
+    return { text, focus, target: [[r, c]],
+      apply: () => { if (solved || g[r][c] === v) return; push(); place(r, c, v); sel = [r, c]; haptic(); draw(); checkSolved(); } };
   };
   draw(); return { ...b, hint, undo, canUndo, clear, metrics };
 }
