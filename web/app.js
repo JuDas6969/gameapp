@@ -73,9 +73,9 @@ export const haptic = (ms = 8) => { try { navigator.vibrate?.(ms); } catch {} };
 const worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
 let reqId = 0; const pending = new Map();
 worker.onmessage = (e) => { const cb = pending.get(e.data.id); pending.delete(e.data.id); cb?.(e.data); };
-const generateAsync = (kind, diff, seed) => new Promise((res, rej) => {
+const generateAsync = (kind, diff, seed, opts) => new Promise((res, rej) => {
   const id = ++reqId; pending.set(id, (d) => (d.error ? rej(new Error(d.error)) : res(d.puzzle)));
-  worker.postMessage({ id, kind, diff, seed });
+  worker.postMessage({ id, kind, diff, seed, opts });
 });
 
 // ---------- views ----------
@@ -105,19 +105,31 @@ function Home() {
 function Launch(kind) {
   const g = Stats.g(kind); let diff = g.lastDiff || "mittel";
   const scrim = h("div", { class: "scrim", onclick: (e) => { if (e.target === scrim) scrim.remove(); } });
-  const seg = h("div", { class: "seg" });
+  const seg = h("div", { class: "seg diffseg" });
   const drawSeg = () => seg.replaceChildren(...Object.keys(DIFF_TITLE).map((d) => h("button", { class: d === diff ? "on" : "", onclick: () => { diff = d; g.lastDiff = d; Stats.save(); drawSeg(); } }, DIFF_TITLE[d])));
   drawSeg();
+  // optional per-game options (e.g. Sudoku size/variant), remembered per game
+  const optDefs = GAMES[kind].options || {};
+  const opts = { ...Object.fromEntries(Object.entries(optDefs).map(([k, d]) => [k, d.default])), ...(g.lastOpts || {}) };
+  const optBox = h("div", {});
+  const drawOpts = () => optBox.replaceChildren(...Object.entries(optDefs).flatMap(([k, d]) => {
+    const vals = d.values.filter(([v]) => !d.allowed || d.allowed(v, opts));
+    if (!vals.some(([v]) => v === opts[k])) opts[k] = vals[0][0];
+    const box = h("div", { class: "seg" + (vals.length > 4 ? " wrap" : "") }, vals.map(([v, t]) => h("button", { class: v === opts[k] ? "on" : "", onclick: () => { opts[k] = v; g.lastOpts = { ...opts }; Stats.save(); drawOpts(); } }, t)));
+    return [h("div", { style: "font-weight:700;font-size:14px;margin-bottom:6px" }, d.label), box];
+  }));
+  drawOpts();
   const best = Object.entries(g.best);
   const streak = Stats.streak(kind);
   scrim.append(h("div", { class: "sheet" },
     h("h2", {}, GAMES[kind].title), h("p", {}, GAMES[kind].rules),
+    optBox,
     h("div", { style: "font-weight:700;font-size:14px;margin-bottom:6px" }, "Schwierigkeit"), seg,
     best.length ? h("div", { class: "best" }, "Bestzeiten:", best.map(([d, s]) => h("span", {}, `${DIFF_TITLE[d]} ${clock(s)}`))) : null,
     (streak || g.flawless) ? h("div", { class: "best" },
       streak ? h("span", {}, `🔥 ${streak} Tage${g.freezes ? ` · ${"🧊".repeat(g.freezes)} Freeze` : ""}`) : null,
       g.flawless ? h("span", {}, `${g.flawless}× fehlerfrei`) : null) : null,
-    h("button", { class: "btn primary", onclick: () => { scrim.remove(); Game(kind, { mode: "random", diff }); } }, "Neues Rätsel"),
+    h("button", { class: "btn primary", onclick: () => { scrim.remove(); Game(kind, { mode: "random", diff, opts: { ...opts } }); } }, "Neues Rätsel"),
     h("button", { class: "btn ghost" + (Stats.dailyDone(kind) ? " done" : ""), onclick: () => { scrim.remove(); Game(kind, { mode: "daily" }); } },
       Stats.dailyDone(kind) ? "✓ Tagesrätsel nochmal spielen" : `Tagesrätsel #${dailyNumber()} – ${DIFF_TITLE[dailyDiff()]}`)));
   document.body.append(scrim);
@@ -272,7 +284,7 @@ async function Game(kind, session) {
     wrap.replaceChildren(h("div", { class: "spin" })); tools.replaceChildren();
     const seed = isDaily ? dailySeed(kind) : randomSeed();
     const diff = isDaily ? dailyDiff() : session.diff;
-    puzzle = await generateAsync(kind, diff, seed);
+    puzzle = await generateAsync(kind, diff, seed, isDaily ? {} : (session.opts || {}));
     metaL.textContent = isDaily ? `Tagesrätsel #${dailyNumber()} · ${DIFF_TITLE[puzzle.diff]}` : DIFF_TITLE[puzzle.diff];
     board = BOARDS[kind](puzzle, { onSolved, tools, haptic });
     wrap.replaceChildren(board.el);

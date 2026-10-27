@@ -148,3 +148,7 @@ h1, h2 { margin: 0; font-family: "New York", "Iowan Old Style", Georgia, serif; 
 .howto summary::-webkit-details-marker { display: none; }
 .howto p { margin: 0 0 12px; font-size: 15px; line-height: 1.5; color: var(--ink); }
 .tools { padding-bottom: 4px; }
+
+.seg.wrap { flex-wrap: wrap; }
+.seg.wrap button { flex: 1 0 30%; }
+.sheet { max-height: 92dvh; overflow-y: auto; }

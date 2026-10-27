@@ -25,7 +25,7 @@ for (const [i, kind] of games.entries()) {
   await page.goto(`${BASE}/`); await page.waitForSelector(".card");
   await page.locator(".card").nth(i).click(); await page.waitForSelector(".sheet");
   if (i === 0) await shot("01-sheet");
-  await page.locator(".seg button").nth(1).click(); // mittel
+  await page.locator(".diffseg button").nth(1).click(); // mittel
   await page.locator(".btn.primary").click();
   await page.waitForSelector(".board svg", { timeout: 15000 });
   await page.waitForTimeout(300);
@@ -64,7 +64,7 @@ await page.waitForSelector(".win", { timeout: 3000 }); await page.waitForTimeout
 // nonogram: tap all filled cells of the solution
 await page.goto(`${BASE}/`); await page.waitForSelector(".card");
 await page.evaluate(() => { window.__puzzle = null; const O = Worker.prototype.postMessage; Worker.prototype.postMessage = function (m) { this.addEventListener("message", (e) => { if (e.data.puzzle) window.__puzzle = e.data.puzzle; }, { once: true }); return O.call(this, m); }; });
-await page.locator(".card").nth(5).click(); await page.locator(".seg button").nth(0).click(); await page.locator(".btn.primary").click(); await page.waitForSelector(".board svg");
+await page.locator(".card").nth(5).click(); await page.locator(".diffseg button").nth(0).click(); await page.locator(".btn.primary").click(); await page.waitForSelector(".board svg");
 await page.waitForFunction(() => window.__puzzle);
 const np = await page.evaluate(() => window.__puzzle);
 const vb = await page.evaluate(() => document.querySelector(".board svg").getAttribute("viewBox").split(" ").map(Number));

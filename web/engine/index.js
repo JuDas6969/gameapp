@@ -17,8 +17,8 @@ export * from "./core.js";
 
 export const ENGINES = { sudoku, queens, tango, zip, patches, nonogram, hashi, slitherlink, nurikabe, kakuro, woertle, wortpfad, treffpunkt, wortleiter, kreuzwort };
 
-export function generate(kind, diff, seed) {
-  return ENGINES[kind].generate(diff, seed);
+export function generate(kind, diff, seed, opts) {
+  return ENGINES[kind].generate(diff, seed, opts || {});
 }
 export function randomSeed() {
   const a = new Uint32Array(2); (globalThis.crypto || require("crypto").webcrypto).getRandomValues(a);
