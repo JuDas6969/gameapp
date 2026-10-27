@@ -111,3 +111,25 @@ export function generate(diff, seed) {
   }
   return { kind: "tango", n: N, diff, givens: g, solution: sol, constraints };
 }
+
+/**
+ * Pure hint helper: like deduce(), but falls back to a short contradiction search when the simple rules are stuck.
+ * Returns deduce()'s shape, or { r, c, v, rule: "trial", tried, steps } (putting `tried` in (r,c) and
+ * propagating with deduce() leads to a rule violation after `steps` placements), or null.
+ */
+export function explain(p, g) {
+  const d = deduce(p, g); if (d) return d;
+  let best = null;
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    if (g[r][c] !== -1) continue;
+    for (const v of [0, 1]) {
+      const h = clone(g); h[r][c] = v; let steps = 0, dead = conflicts(p, h).size > 0;
+      while (!dead && steps < 36) {
+        const e = deduce(p, h); if (!e) break;
+        h[e.r][e.c] = e.v; steps++; dead = conflicts(p, h).size > 0;
+      }
+      if (dead && (!best || steps < best.steps)) best = { r, c, v: 1 - v, rule: "trial", tried: v, steps };
+    }
+  }
+  return best;
+}

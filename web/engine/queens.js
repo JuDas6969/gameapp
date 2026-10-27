@@ -118,3 +118,96 @@ export function generate(diff, seed) {
     if (repair(n, reg, q, rng)) return { kind: "queens", n, diff, regions: reg, solution: q };
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Hints (pure): next logical step for a marks grid (0 empty, 1 ×, 2 queen), LinkedIn-style.
+// Returns { kind, ... } or null when solved. kinds:
+//   wrongQueen { cell, why: row|col|region|touch|blocks|dead, focus, area? }
+//   wrongX     { cell }
+//   single     { type: region|row|col, cell, focus, strike }
+//   confine    { k, from: region|row|col, to: row|col|region, focus, strike }
+//   blocks     { cell, type: region|row|col, focus }
+//   fallback   { cell, focus, strike }
+// Invariant (no wrong queen, no wrong ×): every struck cell is not a solution cell.
+// ---------------------------------------------------------------------------------------------
+const combos = (arr, k, f) => {
+  const pick = [];
+  const rec = (s) => { if (pick.length === k) return f(pick.slice()); for (let i = s; i < arr.length; i++) { pick.push(arr[i]); const res = rec(i + 1); pick.pop(); if (res) return res; } return null; };
+  return rec(0);
+};
+export function nextHint(p, marks) {
+  const n = p.n, R = p.regions, K = (r, c) => r * 64 + c;
+  const all = []; for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) all.push([r, c]);
+  const areaCells = (type, i) => all.filter(([r, c]) => (type === "region" ? R[r][c] : type === "row" ? r : c) === i);
+  const qs = all.filter(([r, c]) => marks[r][c] === 2);
+  const wrong = qs.filter(([r, c]) => p.solution[r] !== c), good = qs.filter(([r, c]) => p.solution[r] === c);
+  // (1) wrong queen
+  for (const q of wrong) {
+    const [r, c] = q, others = qs.filter((o) => o !== q);
+    const o = (f) => others.find(f);
+    if (o(([rr]) => rr === r)) return { kind: "wrongQueen", cell: q, why: "row", focus: areaCells("row", r) };
+    if (o(([, cc]) => cc === c)) return { kind: "wrongQueen", cell: q, why: "col", focus: areaCells("col", c) };
+    if (o(([rr, cc]) => R[rr][cc] === R[r][c])) return { kind: "wrongQueen", cell: q, why: "region", focus: areaCells("region", R[r][c]) };
+    const t = o(([rr, cc]) => Math.abs(rr - r) <= 1 && Math.abs(cc - c) <= 1);
+    if (t) return { kind: "wrongQueen", cell: q, why: "touch", focus: [t] };
+    const ex = excluded(p, [...good.map(([a, b]) => K(a, b)), K(r, c)]);
+    const used = { region: new Set([...good, q].map(([a, b]) => R[a][b])), row: new Set([...good, q].map(([a]) => a)), col: new Set([...good, q].map(([, b]) => b)) };
+    for (const type of ["region", "row", "col"]) for (let i = 0; i < n; i++) {
+      if (used[type].has(i)) continue;
+      const cells = areaCells(type, i);
+      if (cells.every(([a, b]) => ex.has(K(a, b)) || marks[a][b] === 1)) return { kind: "wrongQueen", cell: q, why: "blocks", type, focus: cells };
+    }
+    return { kind: "wrongQueen", cell: q, why: "dead", focus: [] };
+  }
+  // (1b) × on a solution cell
+  for (let r = 0; r < n; r++) if (marks[r][p.solution[r]] === 1) return { kind: "wrongX", cell: [r, p.solution[r]] };
+  if (good.length === n) return null;
+  // free cells = empty and not ruled out by the placed (correct) queens
+  const ex = excluded(p, good.map(([a, b]) => K(a, b)));
+  const isFree = (r, c) => marks[r][c] === 0 && !ex.has(K(r, c));
+  const usedR = new Set(good.map(([a, b]) => R[a][b])), usedRow = new Set(good.map(([a]) => a)), usedCol = new Set(good.map(([, b]) => b));
+  const open = { region: [], row: [], col: [] };
+  for (let i = 0; i < n; i++) {
+    if (!usedR.has(i)) open.region.push(i);
+    if (!usedRow.has(i)) open.row.push(i);
+    if (!usedCol.has(i)) open.col.push(i);
+  }
+  const freeOf = (type, i) => areaCells(type, i).filter(([r, c]) => isFree(r, c));
+  const idx = (type, [r, c]) => (type === "region" ? R[r][c] : type === "row" ? r : c);
+  // (5) area with exactly one free cell
+  for (const type of ["region", "row", "col"]) for (const i of open[type]) {
+    const f = freeOf(type, i);
+    if (f.length === 1) {
+      const cell = f[0];
+      return { kind: "single", type, cell, focus: areaCells(type, i), strike: areaCells(type, i).filter(([r, c]) => (r !== cell[0] || c !== cell[1]) && marks[r][c] === 0) };
+    }
+  }
+  // (2)+(3) k areas of one kind whose free cells lie in exactly k areas of another kind → rest of those is excluded
+  const pairs = [["region", "row"], ["region", "col"], ["row", "region"], ["col", "region"]];
+  for (let k = 1; k < open.region.length; k++) for (const [from, to] of pairs) {
+    const res = combos(open[from], k, (set) => {
+      const cells = set.flatMap((i) => freeOf(from, i));
+      const tos = new Set(cells.map((x) => idx(to, x)));
+      if (tos.size !== k) return null;
+      const fromSet = new Set(set);
+      const strike = all.filter(([r, c]) => isFree(r, c) && tos.has(idx(to, [r, c])) && !fromSet.has(idx(from, [r, c])));
+      if (!strike.length) return null;
+      return { kind: "confine", k, from, to, focus: set.flatMap((i) => areaCells(from, i)), strike };
+    });
+    if (res) return res;
+  }
+  // (4) a free cell whose queen would leave some region / row / column without room
+  for (const type of ["region", "row", "col"]) for (const i of open[type]) {
+    const fa = freeOf(type, i);
+    for (const [r, c] of all) {
+      if (!isFree(r, c) || idx(type, [r, c]) === i) continue;
+      const exX = new Set([...attacked(n, r, c), K(r, c)]);
+      const blocked = fa.every(([a, b]) => exX.has(K(a, b)) || (type !== "region" && R[a][b] === R[r][c]));
+      if (blocked) return { kind: "blocks", cell: [r, c], type, focus: areaCells(type, i) };
+    }
+  }
+  // (6) fallback: tightest open region, place its queen
+  const g = open.region.map((i) => [i, freeOf("region", i)]).sort((a, b) => a[1].length - b[1].length)[0];
+  const [gi, f] = g, row = f.find(([r, c]) => p.solution[r] === c);
+  return { kind: "fallback", cell: row, focus: areaCells("region", gi), strike: areaCells("region", gi).filter(([r, c]) => !(r === row[0] && c === row[1]) && marks[r][c] === 0) };
+}

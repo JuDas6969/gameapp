@@ -1,4 +1,4 @@
-import { S, svgEl, h, REGION, base, txt, msgBar } from "./_shared.js";
+import { S, svgEl, h, base, txt, msgBar } from "./_shared.js";
 import * as queens from "../engine/queens.js";
 
 const AUTOX_KEY = "raetsel.queens.autox";
@@ -6,9 +6,10 @@ const loadAutoX = () => { try { return localStorage.getItem(AUTOX_KEY) !== "0"; 
 const saveAutoX = (on) => { try { localStorage.setItem(AUTOX_KEY, on ? "1" : "0"); } catch {} };
 // Crown glyph, drawn in a 100×100 cell (centred). Pure path so the colour follows --ink / --bad in both themes.
 const CROWN = "M20 64 L15 30 L35 46 L50 22 L65 46 L85 30 L80 64 Z M20 70 H80 V80 H20 Z";
-// Region index (REGION(i) → --r1..--r12) → emoji square for the share line.
-const EMOJI = ["🟥", "🟦", "🟩", "🟨", "🟪", "🟫", "🟧", "⬜", "⬛", "🟧", "🟩", "🟥"];
-const HINT_TTL = 20000; // ms the first (highlight-only) hint stays valid for the second (apply) call
+// LinkedIn-like strong pastels – identical in light and dark mode (glyphs stay dark on top).
+const PAL = ["#b9a0e6", "#ffc58f", "#93bbf5", "#b3dc9b", "#d9d9d9", "#ff8a73", "#e8ec84", "#9fd4d6", "#e7a6c8", "#c8b89a", "#a7c7a0", "#f2b8a8"];
+const EMOJI = ["🟪", "🟧", "🟦", "🟩", "⬜", "🟥", "🟨", "🟦", "🟪", "🟫", "🟩", "🟥"];
+const INK = "#1b1b1b", BORDER = "#111";
 
 export function Queens(p, { onSolved, tools, haptic }) {
   const n = p.n, marks = Array.from({ length: n }, () => Array(n).fill(0)); // 0 empty, 1 ×, 2 queen
@@ -17,13 +18,18 @@ export function Queens(p, { onSolved, tools, haptic }) {
   const key = (r, c) => r * 64 + c, rc = (k) => [Math.floor(k / 64), k % 64];
   const b = base(n); const xs = [], crowns = [], shades = [];
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-    b.layers.bg.append(svgEl("rect", { x: c * S, y: r * S, width: S, height: S, fill: REGION(p.regions[r][c]) }));
+    b.layers.bg.append(svgEl("rect", { x: c * S, y: r * S, width: S, height: S, fill: PAL[p.regions[r][c] % PAL.length] }));
     const sh = svgEl("rect", { x: c * S, y: r * S, width: S, height: S, fill: "#000", "fill-opacity": 0, style: "pointer-events:none" }); b.layers.cells.append(sh); shades.push(sh);
     const t = txt(c * S + S / 2, r * S + S / 2, "", 44); b.layers.top.append(t); xs.push(t);
-    const q = svgEl("path", { d: CROWN, transform: `translate(${c * S} ${r * S}) scale(.72) translate(19 19)`, class: "cell-txt", "stroke-linejoin": "round", stroke: "var(--ink)", "stroke-width": 4, display: "none" });
+    const q = svgEl("path", { d: CROWN, transform: `translate(${c * S} ${r * S}) scale(.72) translate(19 19)`, class: "cell-txt", "stroke-linejoin": "round", "stroke-width": 4, style: `fill:${INK};stroke:${INK}`, display: "none" });
     b.layers.top.append(q); crowns.push(q);
-    if (c + 1 < n && p.regions[r][c] !== p.regions[r][c + 1]) b.layers.mid.append(svgEl("line", { x1: (c + 1) * S, y1: r * S, x2: (c + 1) * S, y2: (r + 1) * S, stroke: "var(--line-strong)", "stroke-width": 5 }));
-    if (r + 1 < n && p.regions[r][c] !== p.regions[r + 1][c]) b.layers.mid.append(svgEl("line", { x1: c * S, y1: (r + 1) * S, x2: (c + 1) * S, y2: (r + 1) * S, stroke: "var(--line-strong)", "stroke-width": 5 }));
+    if (c + 1 < n && p.regions[r][c] !== p.regions[r][c + 1]) b.layers.mid.append(svgEl("line", { x1: (c + 1) * S, y1: r * S, x2: (c + 1) * S, y2: (r + 1) * S, stroke: BORDER, "stroke-width": 6, "stroke-linecap": "square" }));
+    if (r + 1 < n && p.regions[r][c] !== p.regions[r + 1][c]) b.layers.mid.append(svgEl("line", { x1: c * S, y1: (r + 1) * S, x2: (c + 1) * S, y2: (r + 1) * S, stroke: BORDER, "stroke-width": 6, "stroke-linecap": "square" }));
+  }
+  // grid lines from base(): thin dark lines on the pastels, thick black frame (same in both themes)
+  for (const ln of b.layers.lines.children) {
+    const thick = ln.getAttribute("stroke-width") === "4";
+    ln.setAttribute("stroke", thick ? BORDER : "rgba(0,0,0,.28)"); ln.setAttribute("stroke-width", thick ? 8 : 1.5);
   }
   const setMsg = msgBar(tools, "Tippen: leer → × → ♛ · Ziehen malt ×");
   const autoBtn = h("button", { onclick: () => { autoX = !autoX; saveAutoX(autoX); autoBtn.textContent = `Auto-×: ${autoX ? "an" : "aus"}`; haptic(); } }, `Auto-×: ${autoX ? "an" : "aus"}`);
@@ -73,10 +79,9 @@ export function Queens(p, { onSolved, tools, haptic }) {
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
       const i = r * n + c, m = marks[r][c], isBad = bad.has(key(r, c));
       xs[i].textContent = m === 1 ? "×" : "";
-      xs[i].setAttribute("fill", "var(--muted)");
+      xs[i].setAttribute("style", "fill:rgba(0,0,0,.62)");
       if (m !== 2) crowns[i].setAttribute("display", "none"); else crowns[i].removeAttribute("display");
-      crowns[i].setAttribute("class", "cell-txt" + (isBad ? " bad" : ""));
-      crowns[i].setAttribute("stroke", isBad ? "var(--bad)" : "var(--ink)");
+      crowns[i].setAttribute("style", isBad ? "fill:#d0221a;stroke:#d0221a" : `fill:${INK};stroke:${INK}`);
       shades[i].setAttribute("fill-opacity", m !== 2 && (rowQ[r] || colQ[c]) ? 0.1 : 0);
     }
     const left = n - qs.size;
@@ -84,27 +89,12 @@ export function Queens(p, { onSolved, tools, haptic }) {
     else setMsg(left === 0 ? "Alle Königinnen gesetzt" : `Noch ${left} Königin${left === 1 ? "" : "nen"} · Ziehen malt ×`);
     if (!solvedFired && queens.isSolved(p, qs)) { solvedFired = true; onSolved(); }
   };
-  const flash = (cells) => {
-    const rects = cells.map(([r, c]) => svgEl("rect", { x: c * S, y: r * S, width: S, height: S, fill: "var(--ok)", "fill-opacity": .4, style: "pointer-events:none" }));
-    b.layers.top.append(...rects); setTimeout(() => rects.forEach((x) => x.remove()), 900);
-  };
 
-  // ---- two-stage hint state ----
-  let pending = null; // { cells, apply, msg, t, rects, timer }
-  const clearHint = () => {
-    if (!pending) return;
-    pending.rects.forEach((x) => x.remove()); clearTimeout(pending.timer); pending = null;
-  };
-  const pulse = (cells, color) => cells.map(([r, c]) => {
-    const rect = svgEl("rect", { x: c * S, y: r * S, width: S, height: S, fill: color, "fill-opacity": .35, style: "pointer-events:none" });
-    rect.append(svgEl("animate", { attributeName: "fill-opacity", values: "0.15;0.55;0.15", dur: "1.1s", repeatCount: "indefinite" }));
-    b.layers.top.append(rect); return rect;
-  });
 
   // ---- input ----
   let paintVal = null, before = null;
   b.drag({
-    onStart: ([r, c]) => { clearHint(); push(); before = sig(); paintVal = marks[r][c] === 0 ? 1 : 0; },
+    onStart: ([r, c]) => { push(); before = sig(); paintVal = marks[r][c] === 0 ? 1 : 0; },
     onMove: ([r, c], start) => {
       if (marks[start[0]][start[1]] !== 2) setManual(start[0], start[1], paintVal);
       if (marks[r][c] !== 2) setManual(r, c, paintVal); draw();
@@ -116,70 +106,50 @@ export function Queens(p, { onSolved, tools, haptic }) {
     },
   });
 
-  // ---- hint ----
-  // Computes the next logical step: { cells (to highlight), msg (explanation), done (toast after applying), apply(), color? }
-  const nextStep = () => {
-    const placed = []; for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (marks[r][c] === 2) placed.push([r, c]);
-    // (a) wrong queen → remove
-    const wrong = placed.find(([r, c]) => p.solution[r] !== c);
-    if (wrong) return { cells: [wrong], color: "var(--bad)", msg: "Diese Königin steht falsch – nochmal tippen zum Entfernen", done: "Königin entfernt", apply: () => removeQueen(...wrong) };
-    const good = placed.map(([r, c]) => key(r, c));
-    const ex = queens.excluded(p, good);
-    const regDone = new Set(good.map((k) => p.regions[Math.floor(k / 64)][k % 64]));
-    const open = (r, c) => !ex.has(key(r, c)) && !regDone.has(p.regions[r][c]);
-    const placeStep = (cell, area, msg) => ({ cells: area, msg: `${msg} – nochmal tippen zum Setzen`, done: "Königin gesetzt", apply: () => placeQueen(...cell) });
-    // (b) region with a single remaining cell → highlight whole region
-    const byReg = new Map();
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (open(r, c)) { const g = p.regions[r][c]; if (!byReg.has(g)) byReg.set(g, []); byReg.get(g).push([r, c]); }
-    for (const [g, cells] of byReg) if (cells.length === 1) {
-      const area = []; for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (p.regions[r][c] === g) area.push([r, c]);
-      return placeStep(cells[0], area, "In dieser Region bleibt nur ein freies Feld");
-    }
-    // (c) row / column with a single remaining cell → highlight row / column
-    const rowQ = new Set(good.map((k) => Math.floor(k / 64))), colQ = new Set(good.map((k) => k % 64));
-    for (let r = 0; r < n; r++) if (!rowQ.has(r)) {
-      const cells = []; for (let c = 0; c < n; c++) if (open(r, c)) cells.push([r, c]);
-      if (cells.length === 1) return placeStep(cells[0], Array.from({ length: n }, (_, c) => [r, c]), "In dieser Zeile bleibt nur ein freies Feld");
-    }
-    for (let c = 0; c < n; c++) if (!colQ.has(c)) {
-      const cells = []; for (let r = 0; r < n; r++) if (open(r, c)) cells.push([r, c]);
-      if (cells.length === 1) return placeStep(cells[0], Array.from({ length: n }, (_, r) => [r, c]), "In dieser Spalte bleibt nur ein freies Feld");
-    }
-    // (d) mark the cells excluded by a correct queen (row, column, neighbours, region)
-    for (const [r, c] of placed) {
-      const todo = queens.autoCells(p, r, c).filter((k) => marks[Math.floor(k / 64)][k % 64] === 0);
-      if (!todo.length) continue;
-      const qk = key(r, c);
-      return { cells: todo.map(rc), msg: "Diese Felder schließt die Königin aus – nochmal tippen zum Markieren", done: "Ausgeschlossene Felder markiert",
-        apply: () => { for (const k of todo) { const [rr, cc] = rc(k); marks[rr][cc] = 1; autoBy.set(k, new Set([qk])); } } };
-    }
-    // (e) fallback: place a correct queen
-    for (let r = 0; r < n; r++) if (!rowQ.has(r)) return placeStep([r, p.solution[r]], Array.from({ length: n }, (_, c) => [r, c]), "In dieser Zeile fehlt noch eine Königin");
-    return null;
-  };
+  // ---- hint (LinkedIn-style: reason + action, spotlight via base()) ----
+  const AREA = { region: ["Der hervorgehobene Bereich muss", "Die hervorgehobenen Bereiche müssen je", "diesen Bereich", "diese Bereiche"],
+    row: ["Die hervorgehobene Zeile muss", "Die hervorgehobenen Zeilen müssen je", "diese Zeile", "diese Zeilen"],
+    col: ["Die hervorgehobene Spalte muss", "Die hervorgehobenen Spalten müssen je", "diese Spalte", "diese Spalten"] };
+  const IN_AREA = { region: "in diesem Bereich", row: "in dieser Zeile", col: "in dieser Spalte" };
+  const act = (fn) => () => { push(); fn(); draw(); };
   const hint = () => {
-    if (pending && Date.now() - pending.t < HINT_TTL) {
-      // 2nd call: apply the highlighted step
-      const st = pending; clearHint();
-      push(); st.apply(); draw(); flash(st.cells.length <= 3 ? st.cells : st.cells.slice(0, 0)); // short flash only for single-cell steps
-      return st.done;
+    const st = queens.nextHint(p, marks); if (!st) return null;
+    const { kind } = st;
+    if (kind === "wrongQueen") {
+      const why = { row: "Sie steht in derselben Zeile wie eine andere 👑.", col: "Sie steht in derselben Spalte wie eine andere 👑.",
+        region: "Sie steht im selben Bereich wie eine andere 👑.", touch: "Sie berührt eine andere 👑.",
+        blocks: `Mit ihr bliebe ${IN_AREA[st.type]} kein Platz mehr für eine 👑.`,
+        dead: "Mit ihr lässt sich das Rätsel nicht widerspruchsfrei zu Ende lösen." }[st.why];
+      return { text: `Diese 👑 widerspricht der Lösung: ${why}\nEntfernen Sie sie.`, focus: st.focus, strike: [st.cell], apply: act(() => removeQueen(...st.cell)) };
     }
-    clearHint();
-    const st = nextStep(); if (!st) return null;
-    pending = { ...st, t: Date.now(), rects: pulse(st.cells, st.color || "var(--ok)"), timer: setTimeout(clearHint, HINT_TTL) };
-    return st.msg;
+    if (kind === "wrongX") return { text: "Dieses × schließt eine Zelle aus, die für die Lösung gebraucht wird.\nEntfernen Sie es.", strike: [st.cell], apply: act(() => setManual(...st.cell, 0)) };
+    const cross = (cells) => act(() => { for (const [r, c] of cells) if (marks[r][c] === 0) setManual(r, c, 1); });
+    if (kind === "confine") {
+      const [one, many] = AREA[st.from], blk = AREA[st.to][st.k > 1 ? 3 : 2];
+      const head = st.k > 1 ? `${many} eine 👑 enthalten.` : `${one} eine 👑 enthalten.`;
+      const cellsTxt = st.strike.length > 1 ? "den gestreiften Zellen" : "der gestreiften Zelle";
+      return { text: `${head} Eine 👑 in ${cellsTxt} blockiert ${blk}.\nEntfernen Sie ${st.strike.length > 1 ? "die gestreiften Zellen" : "die gestreifte Zelle"}.`,
+        focus: st.focus, strike: st.strike, apply: cross(st.strike) };
+    }
+    if (kind === "blocks") return { text: `${AREA[st.type][0]} eine 👑 enthalten. Eine 👑 in der gestreiften Zelle blockiert ${AREA[st.type][2]}.\nEntfernen Sie die gestreifte Zelle.`,
+      focus: st.focus, strike: [st.cell], apply: cross([st.cell]) };
+    const placeIt = act(() => placeQueen(...st.cell, true));
+    if (kind === "single") return { text: `Alle anderen Zellen ${IN_AREA[st.type]} sind ausgeschlossen.\nSetzen Sie eine 👑 in die hervorgehobene Zelle.`,
+      focus: st.focus, target: [st.cell], strike: st.strike, apply: placeIt };
+    // fallback
+    return { text: "Jede andere freie Zelle dieses Bereichs führt zum Widerspruch: Danach bliebe für einen Bereich, eine Zeile oder Spalte kein Platz mehr.\nSetzen Sie eine 👑 in die hervorgehobene Zelle.",
+      focus: st.focus, target: [st.cell], strike: st.strike, apply: placeIt };
   };
 
   // ---- public actions ----
   const canUndo = () => stack.length > 0;
   const undo = () => {
     if (!stack.length) return false;
-    clearHint(); restore(stack.pop()); draw(); return true;
+    restore(stack.pop()); draw(); return true;
   };
   const clear = () => {
-    clearHint();
-    if (sig() === marks.map((row) => "0".repeat(n)).join("|")) return;
-    push(); for (let r = 0; r < n; r++) marks[r].fill(0); autoBy = new Map(); draw();
+    if (sig() === marks.map((row) => "0".repeat(n)).join("|")) return false;
+    push(); for (let r = 0; r < n; r++) marks[r].fill(0); autoBy = new Map(); draw(); return true;
   };
   const metrics = () => ({ line: `Erste 👑: ${firstGood.map((g) => EMOJI[g % 12]).join(" ")}`.trim() });
 
