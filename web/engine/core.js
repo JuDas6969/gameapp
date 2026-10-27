@@ -32,6 +32,7 @@ ${UNIQUE}` },
               rules: `Die Zahlen am Rand nennen die Längen der gefüllten Blöcke in jeder Zeile und Spalte – in dieser Reihenfolge.
 Zwischen zwei Blöcken bleibt mindestens ein Feld leer.
 Werkzeug unten wählen (füllen oder ×), dann tippen oder ziehen.
+Ist eine Zeile oder Spalte vollständig, werden ihre restlichen Felder automatisch mit × markiert.
 ${UNIQUE}` },
   hashi: { title: "Brücken", icon: "⊶", subtitle: "Verbinde die Inseln mit Brücken – die Zahl zählt",
     rules: "Verbinde alle Inseln mit waagrechten oder senkrechten Brücken, sodass jede Insel genau so viele Brücken hat, wie ihre Zahl angibt. Zwischen zwei Inseln liegen höchstens zwei Brücken, Brücken dürfen sich nicht kreuzen, und am Ende müssen alle Inseln zusammenhängen.\nZiehen von Insel zu Insel oder Tippen auf eine Brücke schaltet 0 → 1 → 2 → 0." },

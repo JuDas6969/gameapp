@@ -103,7 +103,17 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
     else { for (let y = Math.min(pr, r); y <= Math.max(pr, r); y++) setCell(y, sc, val); }
     lastCell = [r, c]; draw();
   };
-  const paintEnd = () => { highlight(null); if (nonogram.isSolved(p, g)) onSolved(); };
+  // Auto-×: a row/column whose filled cells already match its clues gets × on all remaining empty cells
+  const autoX = () => {
+    let changed = false;
+    const eq = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+    for (let i = 0; i < n; i++) {
+      if (eq(nonogram.cluesOf(g[i].map((v) => v === 1)), p.rows[i])) for (let c = 0; c < n; c++) if (g[i][c] === 0) { g[i][c] = 2; changed = true; }
+      if (eq(nonogram.cluesOf(g.map((row) => row[i] === 1)), p.cols[i])) for (let r = 0; r < n; r++) if (g[r][i] === 0) { g[r][i] = 2; changed = true; }
+    }
+    if (changed) draw();
+  };
+  const paintEnd = () => { highlight(null); autoX(); if (nonogram.isSolved(p, g)) onSolved(); };
 
   svg.addEventListener("pointerdown", (e) => {
     e.preventDefault(); svg.setPointerCapture?.(e.pointerId);
@@ -156,7 +166,7 @@ export function Nonogram(p, { onSolved, tools, haptic }) {
   // ---------- hint (LinkedIn-Stil: Begründung + Spotlight, „Anzeigen“ führt aus) ----------
   const unflash = (list) => { for (const [r, c] of list) cells[r * n + c][0].classList.remove("hintcell"); };
   const flash = (list, ms = 900) => { for (const [r, c] of list) cells[r * n + c][0].classList.add("hintcell"); setTimeout(() => unflash(list), ms); };
-  const finish = () => { draw(); if (nonogram.isSolved(p, g)) onSolved(); };
+  const finish = () => { draw(); autoX(); if (nonogram.isSolved(p, g)) onSolved(); };
   const hint = () => {
     const hnt = nonogram.explainHint(p, g); if (!hnt) return null;
     const rc = hnt.cells.map(([r, c]) => [r, c]);
