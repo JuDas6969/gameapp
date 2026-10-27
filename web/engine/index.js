@@ -8,9 +8,11 @@ import * as hashi from "./hashi.js";
 import * as slitherlink from "./slitherlink.js";
 import * as nurikabe from "./nurikabe.js";
 import * as kakuro from "./kakuro.js";
+import * as woertle from "./woertle.js";
+import * as wortpfad from "./wortpfad.js";
 export * from "./core.js";
 
-export const ENGINES = { sudoku, queens, tango, zip, patches, nonogram, hashi, slitherlink, nurikabe, kakuro };
+export const ENGINES = { sudoku, queens, tango, zip, patches, nonogram, hashi, slitherlink, nurikabe, kakuro, woertle, wortpfad };
 
 export function generate(kind, diff, seed) {
   return ENGINES[kind].generate(diff, seed);
