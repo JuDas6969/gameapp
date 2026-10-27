@@ -43,7 +43,29 @@ export function base(n, { ox = 0, oy = 0, strong = null, bg = null } = {}) {
     const end = (e) => { if (!active) return; active = false; onEnd?.(moved, last, start, e); };
     svg.addEventListener("pointerup", end); svg.addEventListener("pointercancel", end);
   };
-  return { el, svg, layers, W, H, ox, oy, cellAt, drag, aspect: [W, H], lock: () => el.classList.add("locked") };
+  // ---- LinkedIn-style hint spotlight: dim everything except focus cells, outline targets, stripe cells to clear ----
+  let spot = null;
+  const uid = Math.random().toString(36).slice(2, 8);
+  const clearSpotlight = () => { spot?.remove(); spot = null; };
+  /** spec: { focus: [[r,c]…], target: [[r,c]…], strike: [[r,c]…] } – focus/target/strike stay bright, the rest is dimmed. */
+  const spotlight = (spec = {}) => {
+    clearSpotlight();
+    const focus = spec.focus || [], target = spec.target || [], strike = spec.strike || [];
+    if (!focus.length && !target.length && !strike.length) return;
+    const g = svgEl("g", { "pointer-events": "none" });
+    const defs = svgEl("defs");
+    const mask = svgEl("mask", { id: `m${uid}` });
+    mask.append(svgEl("rect", { x: 0, y: 0, width: W, height: H, fill: "#fff" }));
+    for (const [r, c] of [...focus, ...target, ...strike]) mask.append(svgEl("rect", { x: ox + c * S, y: oy + r * S, width: S, height: S, fill: "#000" }));
+    const pat = svgEl("pattern", { id: `p${uid}`, width: 22, height: 22, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" });
+    pat.append(svgEl("rect", { x: 0, y: 0, width: 9, height: 22, fill: "rgba(255,255,255,.55)" }));
+    defs.append(mask, pat); g.append(defs);
+    g.append(svgEl("rect", { x: 0, y: 0, width: W, height: H, fill: "rgba(0,0,0,.58)", mask: `url(#m${uid})`, class: "spot-dim" }));
+    for (const [r, c] of strike) g.append(svgEl("rect", { x: ox + c * S, y: oy + r * S, width: S, height: S, fill: `url(#p${uid})` }));
+    for (const [r, c] of target) g.append(svgEl("rect", { x: ox + c * S + 4, y: oy + r * S + 4, width: S - 8, height: S - 8, fill: "none", stroke: "#1f7aff", "stroke-width": 8, rx: 4 }));
+    svg.append(g); spot = g;
+  };
+  return { el, svg, layers, W, H, ox, oy, cellAt, drag, aspect: [W, H], lock: () => el.classList.add("locked"), spotlight, clearSpotlight };
 }
 export const txt = (x, y, s, size, cls = "cell-txt", extra = {}) => svgEl("text", { x, y, class: cls, "font-size": size, ...extra }, s);
 export const msgBar = (tools, text) => { const m = h("span", { class: "msg" }, text); tools.append(m); return (t, err) => { m.textContent = t; m.classList.toggle("err", !!err); }; };

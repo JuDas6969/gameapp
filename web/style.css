@@ -50,12 +50,12 @@ h1, h2 { margin: 0; font-family: "New York", "Iowan Old Style", Georgia, serif; 
 .btn.small { width: auto; padding: 9px 14px; font-size: 14px; margin: 0; }
 
 /* ---- Game screen ---- */
-.game { display: flex; flex-direction: column; height: 100dvh; max-height: 100dvh; }
+.game { display: flex; flex-direction: column; min-height: 100dvh; padding-bottom: 28px; }
 .top { display: flex; align-items: center; gap: 8px; padding: 6px var(--pad); }
 .top .title { flex: 1; text-align: center; font-weight: 700; font-size: 17px; }
 .top button { padding: 8px 10px; border-radius: 10px; font-size: 15px; } .top button:active { background: var(--accent-soft); }
 .meta { display: flex; justify-content: space-between; color: var(--muted); font-size: 13.5px; padding: 0 var(--pad) 6px; font-variant-numeric: tabular-nums; }
-.board-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 4px var(--pad); min-height: 0; }
+.board-wrap { display: flex; align-items: center; justify-content: center; padding: 6px var(--pad); position: relative; }
 .board { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; }
 .board svg { display: block; width: 100%; height: 100%; }
 .board.locked { pointer-events: none; }
@@ -122,3 +122,29 @@ h1, h2 { margin: 0; font-family: "New York", "Iowan Old Style", Georgia, serif; 
 .tools .kb { flex: 1 0 100%; }
 /* word-game boards are plain DOM (not SVG) */
 .board.dom { touch-action: manipulation; }
+
+/* ---- LinkedIn-style game chrome ---- */
+.top .back { font-size: 26px; line-height: 1; padding: 4px 10px; }
+.meta { align-items: center; }
+.meta .dot { opacity: .5; }
+.pill { position: relative; overflow: hidden; flex: 1; padding: 13px 16px; border-radius: 999px; border: 2px solid var(--line-strong); background: transparent; color: var(--ink); font-weight: 700; font-size: 17px; }
+.pill:disabled { border-color: transparent; background: var(--line); color: var(--muted); opacity: .8; }
+.pill.small { flex: 0 0 auto; padding: 8px 16px; font-size: 15px; border-width: 1.5px; }
+.pill.ghost { border-color: var(--line); }
+.pill .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--line); transition: width .3s linear; }
+.pill .lbl { position: relative; }
+.pill.hint.cooling { border-color: var(--line-strong); background: transparent; color: var(--muted); }
+.actions { display: flex; gap: 12px; padding: 10px var(--pad) 4px; max-width: 640px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.hint-panel { margin: 10px var(--pad) 0; max-width: 640px; align-self: center; width: calc(100% - 2 * var(--pad)); box-sizing: border-box; border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px 16px; background: var(--card); animation: fade .15s; }
+.hint-panel[hidden] { display: none; }
+.hint-head { display: flex; justify-content: space-between; align-items: center; font-size: 17px; }
+.hint-head .x { font-size: 20px; padding: 2px 6px; color: var(--muted); }
+.hint-text p { margin: 8px 0 0; font-size: 16px; line-height: 1.45; }
+.hint-panel .pill.small { margin-top: 12px; }
+.howto { margin: 14px var(--pad) 0; max-width: 640px; align-self: center; width: calc(100% - 2 * var(--pad)); box-sizing: border-box; border: 1px solid var(--line); border-radius: 14px; padding: 4px 18px; }
+.howto summary { list-style: none; cursor: pointer; font-weight: 700; font-size: 17px; padding: 12px 0; display: flex; justify-content: space-between; }
+.howto summary::after { content: "⌄"; font-size: 20px; line-height: 1; transition: transform .2s; }
+.howto[open] summary::after { transform: rotate(180deg); }
+.howto summary::-webkit-details-marker { display: none; }
+.howto p { margin: 0 0 12px; font-size: 15px; line-height: 1.5; color: var(--ink); }
+.tools { padding-bottom: 4px; }

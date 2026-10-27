@@ -24,3 +24,22 @@ Projekt: `/home/claude/gameapp/web/` – Vanilla-JS-PWA (ES-Module, kein Build-S
 ## Tastatur
 `boards/_keyboard.js`: `keyboard(container, onKey, {enter})` → `{ el, mark(k, "ok"|"near"|"miss"|""), reset(), destroy() }`. Tasten: A–Z, Ä, Ö, Ü, „⌫“, „⏎“. Hört auch auf die Hardware-Tastatur. CSS-Klassen `.kb*` existieren in style.css. In `tools` einhängen (`keyboard(tools, …)`), beim Verlassen nicht nötig zu zerstören (Game-Screen ersetzt `tools`-Inhalt), aber `destroy()` beim Neuladen aufrufen ist sauberer – gib daher im Board-Objekt `destroy()` zurück, app.js ruft es beim Verlassen auf (falls vorhanden).
 Wortspiel-Boards müssen kein SVG sein: ein DOM-Board (`h("div", { class: "board dom" }, …)`) ist erlaubt; `aspect` dann z. B. `[1, 1]` oder passend zur Fläche. Das Board wird von app.js auf das Quadrat aus Breite/Höhe des `.board-wrap` skaliert – für hohe Boards `aspect: [w, h]` setzen.
+
+## Tipps im LinkedIn-Stil (verbindlich, ersetzt die alte Zwei-Stufen-Logik)
+app.js zeigt Tipps jetzt in einem **Panel unter dem Board** („Tipp:“ + Text + optional Button „Anzeigen“ + ✕), mit 5 s Abklingzeit am Tipp-Button. `board.hint()` liefert **ein Objekt** (kein String mehr, kein zweiter Aufruf):
+```js
+{ text: "Begründung.\nWas zu tun ist.",   // IMMER zwei Teile: 1. Zeile = WARUM (Regel/Logik), 2. Zeile = WAS (Aktion). \n trennt Absätze.
+  focus:  [[r,c], …],   // Zellen, die die Begründung tragen (bleiben hell, Rest wird abgedunkelt)
+  target: [[r,c], …],   // Zielzelle(n) – blauer Rahmen
+  strike: [[r,c], …],   // Zellen, die geleert/ausgeschlossen werden – gestreift
+  apply:  () => "Kurze Bestätigung" | undefined }   // führt aus, wenn der Spieler „Anzeigen“ drückt; ohne apply = nur Erklärung
+```
+- Spotlight: SVG-Boards auf `base()` haben `spotlight(spec)` / `clearSpotlight()` bereits (über `{...b}` mit zurückgeben!). DOM-Boards implementieren `spotlight(spec)`/`clearSpotlight()` selbst (gleiche Optik: Rest abdunkeln ~58 % Schwarz, Ziel blauer Rahmen #1f7aff, Streifen diagonal weiß 55 %).
+- **Jeder Tipp hat eine Begründung** – kein „Hier gehört X hin“ ohne Warum. Beispiele (LinkedIn-Originaltexte, auf Deutsch):
+  - Königinnen: „Der hervorgehobene Bereich muss eine 👑 enthalten. Eine 👑 in den gestreiften Zellen blockiert diese Zeile.\nEntfernen Sie die gestreiften Zellen.“ / „Alle anderen Zellen in diesem Bereich sind ausgeschlossen.\nSetzen Sie eine 👑 in die hervorgehobene Zelle.“
+  - Duo: „Durch ein = getrennte Zellen müssen vom gleichen Typ sein.\nDeshalb muss die hervorgehobene Zelle ein 🌙 sein.“ / „Es dürfen höchstens zwei ☀ oder 🌙 nebeneinander liegen.\nDeshalb muss …“
+  - Mini-Sudoku: „In der sich kreuzenden Zeile, Spalte und Region ist 2 die einzige verbleibende Option.“
+  - Pfad: wird **sofort ausgeführt** (kein apply, Aktion in hint() selbst): „Wir haben deinen Pfad bis zum ersten Fehler gelöscht und um ein Stück verlängert.“ bzw. „Wir haben deinen Pfad erweitert.“ – trotzdem mit kurzer Begründung, warum genau dorthin („Von 3 führt nur ein Weg zu 4, der keine Sackgasse hinterlässt.“).
+  - Falsche Eingaben haben Vorrang: „Dieses Feld widerspricht der Lösung: …\nEntfernen Sie es.“ (strike + apply).
+- Kein `undo` beim reinen Anzeigen; `apply` ist undo-fähig. Bei Spieleraktion schließt app.js das Panel und ruft `clearSpotlight()`.
+- Gezählt wird ein Tipp pro Druck auf „Tipp“.

@@ -136,34 +136,77 @@ async function Game(kind, session) {
   document.addEventListener("visibilitychange", onVis);
 
   const timeEl = h("span", {}, "0:00");
-  const hintBtn = h("button", { class: "hintbtn", onclick: () => {
-    if (!board?.hint || solved) return;
-    const msg = board.hint();                   // board applies one step and returns a short German message (or null if nothing to show)
-    if (msg) { hints++; hintBtn.textContent = `💡 Tipp (${hints})`; haptic(); toast(msg); }
-  } }, "💡 Tipp");
-  const undoBtn = h("button", { class: "undobtn", "aria-label": "Rückgängig", onclick: () => {
+  // ---- LinkedIn-style controls: [Widerrufen | Tipp] under the board, hint panel, "So geht's" ----
+  const HINT_COOLDOWN = 5000;
+  let cooldownUntil = 0, pendingHint = null;
+  const hintFill = h("span", { class: "fill" });
+  const hintBtn = h("button", { class: "pill hint", onclick: () => askHint() }, hintFill, h("span", { class: "lbl" }, "Tipp"));
+  const undoBtn = h("button", { class: "pill", onclick: () => {
     if (solved || !board?.undo) return;
+    closeHint();
     if (board.undo()) haptic();
-  } }, "↶");
-  const updateUndo = () => { undoBtn.disabled = solved || !board?.undo || (board.canUndo ? !board.canUndo() : false); };
+  } }, "Widerrufen");
+  const updateUndo = () => {
+    undoBtn.disabled = solved || !board?.undo || (board.canUndo ? !board.canUndo() : false);
+    const left = cooldownUntil - Date.now();
+    hintBtn.disabled = solved || !board?.hint || left > 0;
+    hintFill.style.width = left > 0 ? `${100 * (1 - left / HINT_COOLDOWN)}%` : "0%";
+    hintBtn.classList.toggle("cooling", left > 0);
+  };
+  const hintText = h("div", { class: "hint-text" });
+  const hintGo = h("button", { class: "pill small", onclick: () => applyHint() }, "Anzeigen");
+  const hintPanel = h("div", { class: "hint-panel", hidden: "" },
+    h("div", { class: "hint-head" }, h("b", {}, "Tipp:"), h("button", { class: "x", "aria-label": "Schließen", onclick: () => closeHint() }, "✕")),
+    hintText, hintGo);
+  const clearSpot = () => { board?.clearSpotlight?.(); };
+  function closeHint() { pendingHint = null; hintPanel.hidden = true; clearSpot(); }
+  function showPanel(text, withButton) {
+    hintText.replaceChildren(...String(text).split("\n").map((t) => h("p", {}, t)));
+    hintGo.hidden = !withButton; hintPanel.hidden = false;
+    hintPanel.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }
+  function askHint() {
+    if (!board?.hint || solved || Date.now() < cooldownUntil) return;
+    closeHint();
+    const res = board.hint();
+    if (!res) return;
+    hints++; haptic(); cooldownUntil = Date.now() + HINT_COOLDOWN; updateUndo();
+    if (typeof res === "string") { showPanel(res, false); return; }
+    // structured hint: { text, focus, target, strike, apply }
+    board.spotlight?.(res);
+    if (res.apply) { pendingHint = res; showPanel(res.text, true); }
+    else showPanel(res.text, false);
+  }
+  function applyHint() {
+    const hnt = pendingHint; if (!hnt) return;
+    pendingHint = null; clearSpot();
+    const after = hnt.apply();
+    haptic(); updateUndo();
+    if (after) showPanel(after, false); else hintPanel.hidden = true;
+  }
+  const resetBtn = h("button", { class: "pill small ghost", onclick: () => { if (solved || !board?.clear) return; closeHint(); if (board.clear()) haptic(); } }, "Zurücksetzen");
   const metaL = h("span", {}, isDaily ? `Tagesrätsel #${dailyNumber()}` : DIFF_TITLE[session.diff]);
   const wrap = h("div", { class: "board-wrap" }, h("div", { class: "spin" }));
   const tools = h("div", { class: "tools" });
+  const rules = h("details", { class: "howto", open: "" }, h("summary", {}, "So geht's"),
+    ...String(GAMES[kind].rules).split("\n").map((t) => h("p", {}, t)));
   const screen = h("div", { class: "game" },
     h("div", { class: "top" },
-      h("button", { onclick: () => { leave(); Home(); } }, "‹ Zurück"),
+      h("button", { class: "back", "aria-label": "Zurück", onclick: () => { leave(); Home(); } }, "←"),
       h("div", { class: "title" }, GAMES[kind].title),
-      h("button", { onclick: () => alertSheet(GAMES[kind].title, GAMES[kind].rules) }, "?"),
-      undoBtn,
-      hintBtn,
-      isDaily ? h("span", { style: "width:38px" }) : h("button", { "aria-label": "Neues Rätsel", onclick: () => load() }, "↻")),
-    h("div", { class: "meta" }, metaL, timeEl), wrap, tools);
+      isDaily ? h("span", { style: "width:40px" }) : h("button", { "aria-label": "Neues Rätsel", onclick: () => load() }, "↻")),
+    h("div", { class: "meta" }, h("div", {}, metaL, h("span", { class: "dot" }, " · "), timeEl), resetBtn),
+    wrap, tools,
+    h("div", { class: "actions" }, undoBtn, hintBtn),
+    hintPanel, rules);
+  // close the hint panel as soon as the player touches the board themselves
+  wrap.addEventListener("pointerdown", () => { if (!hintPanel.hidden && !pendingHint) closeHint(); else if (pendingHint) { closeHint(); } }, true);
   render(screen);
 
   const stop = () => { pause(); clearInterval(tick); tick = null; };
   const leave = () => { board?.destroy?.(); stop(); document.removeEventListener("visibilitychange", onVis); window.removeEventListener("resize", fit); };
   const onSolved = () => {
-    if (solved) return; solved = true; stop(); haptic(30);
+    if (solved) return; solved = true; stop(); haptic(30); closeHint();
     board?.lock?.(); updateUndo();
     const sec = seconds(); timeEl.textContent = clock(sec);
     const m = board?.metrics?.() || {};
@@ -197,7 +240,7 @@ async function Game(kind, session) {
     wrap.style.position = "relative"; wrap.append(overlay);
   };
   async function load() {
-    stop(); elapsed = 0; runStart = null; solved = false; hints = 0; hintBtn.textContent = "💡 Tipp"; timeEl.textContent = "0:00";
+    stop(); elapsed = 0; runStart = null; solved = false; hints = 0; cooldownUntil = 0; closeHint(); timeEl.textContent = "0:00";
     board?.destroy?.(); board = null; updateUndo();
     wrap.replaceChildren(h("div", { class: "spin" })); tools.replaceChildren();
     const seed = isDaily ? dailySeed(kind) : randomSeed();
@@ -213,9 +256,11 @@ async function Game(kind, session) {
   }
   const fit = () => {
     if (!board) return;
-    const r = wrap.getBoundingClientRect(); const side = Math.max(120, Math.min(r.width, r.height) - 8);
+    const r = wrap.getBoundingClientRect();
+    const maxW = Math.min(r.width - 8, 600);
+    const maxH = Math.max(220, window.innerHeight * (board.compact ? 0.42 : 0.62));
     const [aw, ah] = board.aspect || [1, 1];
-    const scale = Math.min(side / aw, side / ah);
+    const scale = Math.min(maxW / aw, maxH / ah);
     board.el.style.width = `${aw * scale}px`; board.el.style.height = `${ah * scale}px`;
   };
   window.addEventListener("resize", fit);
